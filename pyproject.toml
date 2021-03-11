@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "views-transformation-library"
+version = "0.1.0"
+description = ""
+authors = ["peder2911 <pglandsverk@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+pandas = "^1.2.3"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+pylint = {version = "^2.7.2", optional = true}
+jedi = {version = "^0.18.0", optional = true}
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
