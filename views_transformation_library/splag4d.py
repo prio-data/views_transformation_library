@@ -1,8 +1,5 @@
 import numpy as np
 import pandas as pd
-import time
-import sys
-import matplotlib.pyplot as plt
 from scipy import ndimage
    
 def splag4d(
