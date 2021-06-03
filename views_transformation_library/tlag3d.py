@@ -16,6 +16,19 @@ def tlags3d(
     
     Accepts arbitrary numbers of columns in input df, and arbitrary list of lags.
     
+    Arguments:
+    
+    df:                a dataframe of series to be timelagged
+    
+    use_stride_tricks: boolean, decide to use stride_tricks or not (optional, 
+                       defaults to True)
+                       
+    lags:              a list of lags to be applied (optional, defaults to [1,])
+    
+    Returns:
+    
+    A dataframe with all lags of all columns in input df
+    
     '''
 
 
@@ -182,7 +195,7 @@ def get_tlags(
 
     return tlags
     
-def tlags_to_df_no_strides(
+def tlags_to_df_no_strides(df,
     tensor3d,
     tlags,
     times,
