@@ -1,11 +1,13 @@
 import numpy as np
 import pandas as pd
+
 from scipy import ndimage
    
-def splag4d(
+def get_splag4d(
     df,
     use_stride_tricks=True,
-    weights=None
+    kernel_inner=1,kernel_width=1,kernel_power=0,norm_kernel=0
+
 ):
 
     '''
@@ -36,11 +38,9 @@ def splag4d(
     df=df.fillna(0.0)
     if not(df.index.is_monotonic):
         df=df.sort_index()
-
-    if weights is None:
-        weights=np.ones((3,3))
-        weights[1,1]=0.0
-    
+ 
+    weights=build_kernel_weights(kernel_inner,kernel_width,kernel_power,norm_kernel)
+     
     times,time_to_index,index_to_time=map_times(df)
 
     features=map_features(df)
@@ -55,6 +55,31 @@ def splag4d(
 
     return df_splags
 
+def build_kernel_weights(kernel_inner,kernel_width,kernel_power,norm_kernel):
+    
+    kernel_inner=int(kernel_inner)
+    kernel_width=int(kernel_width)
+    
+    kernel_size=int(2*(kernel_inner+kernel_width))-1
+    weights=np.ones((kernel_size,kernel_size))
+    
+    kernel_centre=int((kernel_size+1)/2)-1
+    
+    for ix in range(kernel_size):
+        dx=ix-kernel_centre
+        for iy in range(kernel_size):
+            dy=iy-kernel_centre
+            if ((abs(dx)<kernel_inner) and (abs(dy)<kernel_inner)):
+               weights[ix,iy]=0.0
+            else:
+               rxy=np.sqrt(dx*dx+dy*dy)
+               weights[ix,iy]/=rxy**kernel_power
+               
+    if (norm_kernel):
+       weights/=np.sum(weights)
+       
+    return weights
+    
 
 def df_to_tensor_strides(
     df
@@ -305,45 +330,9 @@ def splags_to_df(
     colnames=['splag_'+feature for feature in features]
     df_splags=pd.DataFrame(data=final,columns=colnames,index=splags_index)
 
-    return df_splags
-    
-    
-def splag4d(
-    df,
-    use_stride_tricks=True,
-    weights=None
-):
-
-    '''
-    splag4d created 19/03/2021 by Jim Dale
-    
-    Performs spatial lags on a dataframe by transforming from flat format to 4d tensor 
-    with dimensions longitude x latitude x time x features.
-    
-    Spatial lagging can then be done as a 2d convolution on long-lat slices using
-    scipy convolution algorithms.
-    
-    '''
-
-    df=df.fillna(0.0)
-    if not(df.index.is_monotonic):
-        df=df.sort_index()
-
-    if weights is None:
-        weights=np.ones((3,3))
-        weights[1,1]=0.0
-    
-    times,time_to_index,index_to_time=map_times(df)
-
-    features=map_features(df)
-
-    pgids,pgid_to_longlat,longlat_to_pgid,pgid_to_index,index_to_pgid,longrange,latrange=map_pgids(df)
-
-    tensor4d=build_4d_tensor(df,pgids,pgid_to_index,times,time_to_index,longrange,latrange,pgid_to_longlat,features,use_stride_tricks)
-
-    splags=get_splags(tensor4d,longrange,latrange,times,features,time_to_index,weights)
-
-    df_splags=splags_to_df(splags,times,time_to_index,pgids,features,longrange,latrange,longlat_to_pgid)
+    df_splags=df_splags.sort_index()
 
     return df_splags
+    
+    
 
