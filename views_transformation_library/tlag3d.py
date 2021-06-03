@@ -195,7 +195,7 @@ def get_tlags(
 
     return tlags
     
-def tlags_to_df_no_strides(df,
+def tlags_to_df_no_strides(
     tensor3d,
     tlags,
     times,

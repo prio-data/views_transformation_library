@@ -1,14 +1,13 @@
 import numpy as np
 import pandas as pd
-import time
-import sys
-import matplotlib.pyplot as plt
+
 from scipy import ndimage
    
 def get_splag4d(
     df,
     use_stride_tricks=True,
     kernel_inner=1,kernel_width=1,kernel_power=0,norm_kernel=0
+
 ):
 
     '''
