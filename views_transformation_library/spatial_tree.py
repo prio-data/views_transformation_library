@@ -5,8 +5,7 @@ import matplotlib.colors as colors
 import sys
 import time
 
-def get_tree_lag(df,thetacrit,dfunctions):
-
+def get_tree_lag(df,thetacrit,dfunction_option):
     '''
     get_tree_lag
     
@@ -27,6 +26,8 @@ def get_tree_lag(df,thetacrit,dfunctions):
     df=df.fillna(0.0)
     if not(df.index.is_monotonic):
         df=df.sort_index()
+        
+    dfunctions=get_dfunctions(dfunction_option)
 
     tree=SpatialTree()
     
@@ -41,6 +42,38 @@ def get_tree_lag(df,thetacrit,dfunctions):
     df_treelags=tree.tree_lag()
     
     return df_treelags
+    
+    
+def get_dfunctions(dfunction_option):
+
+    dfunctions={}
+
+    if dfunction_option==0:
+    
+        def logd(d):
+            return 1./np.log(1.+d)
+            
+        dfunctions['logd']=logd
+    
+    elif dfunction_option==1:
+    
+        def d_1(d):
+            return 1./d
+            
+        dfunctions['d_1']=d_1
+    
+    elif dfunction_option==2:
+    
+        def d_2(d):
+            return 1./d/d
+            
+        dfunctions['d_2']=d_2
+    
+    else:
+        raise Exception(f"Unrecognised distance function in tree. Allowed: 0=1/ln(1+d), 1=1/d, 2=1/d^2, Supplied: {dfunction_option}")
+        
+    return dfunctions
+    
     
 def get_grid_lag(df,threshold,dfunctions,split_criterion,keep_grids):
 
