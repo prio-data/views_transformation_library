@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from views_transformation_library.missing_handling import replace_na
+from views_transformation_library.missing import replace_na
 
 class TestMissingHandling(unittest.TestCase):
     def test_simple_replacement(self):
