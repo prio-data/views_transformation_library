@@ -18,8 +18,13 @@ def get_tree_lag(df,thetacrit,dfunction_option):
     thetacrit: opening angle used to decide whether to open nodes - large values cause more
     aggressive aggregation of nodes
 
-    dfunctions: a dict of function_name:function pairs, where the functions must take a single
-    argument (distance between nodes) and return a single result (weight corresponding to distance)
+    dfunction_option: an integer selecting which distance weighting to use:
+                
+                     - 0: ln(1+d) weighting
+                     
+                     - 1: 1/d weighting
+                     
+                     - 2: 1/d^2 weighting  
 
     '''
 
@@ -39,7 +44,7 @@ def get_tree_lag(df,thetacrit,dfunction_option):
 
     tree.walk(thetacrit,dfunctions)
 
-    df_treelags=tree.tree_lag()
+    df_treelags=tree.tree_lag(df)
 
     return df_treelags
 
@@ -111,7 +116,7 @@ def get_grid_lag(df,threshold,dfunctions,split_criterion,keep_grids):
 
     tree.stock(df)
 
-    df_gridlags=tree.grid_lag(dfunctions,split_criterion,threshold,keep_grids)
+    df_gridlags=tree.grid_lag(df,dfunctions,split_criterion,threshold,keep_grids)
 
     return df_gridlags
 
@@ -564,7 +569,7 @@ class SpatialTree():
 
         return
 
-    def tree_lag(self):
+    def tree_lag(self,df):
 
         '''
         tree_lag
@@ -612,14 +617,16 @@ class SpatialTree():
 
         df_column_names=['treelag_'+weight+'_'+feature for feature in self.features for weight in self.weightfunctions.keys()]
 
-        df_index=pd.MultiIndex.from_product([self.times, self.pgids],names=['month', 'pgid'])
+        index_names=df.index.names
+        
+        df_index=pd.MultiIndex.from_product([self.times, self.pgids],names=index_names)    
 
         df_treelags=pd.DataFrame(flat, index=df_index, columns=df_column_names)
 
         return df_treelags
 
 
-    def grid_lag(self,dfunctions,split_criterion='min',threshold=10000,keep_grids=False):
+    def grid_lag(self,df,dfunctions,split_criterion='min',threshold=10000,keep_grids=False):
 
         '''
         grid_lag
@@ -725,8 +732,10 @@ class SpatialTree():
 
         df_column_names=['gridlag_'+weight+'_'+feature for feature in self.features for weight in self.weightfunctions.keys()]
 
-        df_index=pd.MultiIndex.from_product([self.times, self.pgids],names=['month', 'pgid'])
-
+        index_names=df.index.names
+        
+        df_index=pd.MultiIndex.from_product([self.times, self.pgids],names=index_names)    
+        
         df_gridlags=pd.DataFrame(flat, index=df_index, columns=df_column_names)
 
         if keep_grids:
