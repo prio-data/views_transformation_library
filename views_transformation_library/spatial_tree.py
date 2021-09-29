@@ -1,9 +1,5 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-import sys
-import time
 
 def get_tree_lag(df,thetacrit,dfunction_option):
     '''
