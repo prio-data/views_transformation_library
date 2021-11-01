@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import utilities
 
 def get_tree_lag(df,thetacrit,dfunction_option):
     '''
@@ -32,9 +33,7 @@ def get_tree_lag(df,thetacrit,dfunction_option):
 
     tree=SpatialTree()
 
-    tree.map_pgids(df)
-
-    tree.build_tree()
+    tree.build_tree(df)
 
     tree.stock(df)
 
@@ -106,9 +105,7 @@ def get_grid_lag(df,threshold,dfunctions,split_criterion,keep_grids):
 
     tree=SpatialTree()
 
-    tree.map_pgids(df)
-
-    tree.build_tree()
+    tree.build_tree(df)
 
     tree.stock(df)
 
@@ -178,80 +175,8 @@ class SpatialTree():
         self.times=None
         self.features=None
         self.weightfunctions=None
-
-    def map_pgids(
-        self,
-		df
-	):
-        '''
-	    map_pgids
-	
-	    This function builds a 2D map in longitude-latitude from the pgids contained in
-	    the input dataframe, and creates dicts allowing quick transformation from (long,lat)
-	    to pgid and vice versa.
-	
-	    The pgids are embedded and centred in the smallest possible square grid whose side
-	    is an integer power of 2
-	    '''
-	
-        PG_STRIDE=720
-	
-		# get unique pgids
-	
-        pgids=np.array(list({idx[1] for idx in df.index.values}))
-        pgids=np.sort(pgids)
-        self.pgids=pgids
 		
-		# convert pgids to longitudes and latitudes
-	
-        longitudes=pgids%PG_STRIDE
-        latitudes=pgids//PG_STRIDE
-	
-        latmin=np.min(latitudes)
-        latmax=np.max(latitudes)
-        longmin=np.min(longitudes)
-        longmax=np.max(longitudes)
-
-        latrange=latmax-latmin
-        longrange=longmax-longmin
-
-		# shift to a set of indices that starts at [0,0]
-
-        latitudes-=latmin
-        longitudes-=longmin
-
-        # find smallest possible square grid with side 2^ncells which will fit the pgids
-
-        latmin=np.min(latitudes)
-        latmax=np.max(latitudes)
-        longmin=np.min(longitudes)
-        longmax=np.max(longitudes)
-
-        maxsize=np.max((longrange,latrange))
-        power=1+int(np.log2(maxsize))
-
-        ncells=2**power
-
-        self.ncells=ncells
-        self.power=power
-
-        # centre the pgids
-
-        inudgelong=int((ncells-longmax)/2)
-        inudgelat=int((ncells-latmax)/2)
-
-        longitudes+=inudgelong
-        latitudes+=inudgelat
-
-		# make dicts to transform between pgids and (long,lat) coordinate
-
-        for i,pgid in enumerate(pgids):
-            self.pgid_to_longlat[pgid]=(longitudes[i],latitudes[i])
-            self.longlat_to_pgid[(longitudes[i],latitudes[i])]=pgid
-            self.pgid_to_index[pgid]=i
-        return
-		
-    def build_tree(self):
+    def build_tree(self,df):
 
         '''
 	    build_tree
@@ -277,6 +202,9 @@ class SpatialTree():
 	    is contiguous.
 	
 	    '''
+	
+        self.pgids,self.pgid_to_longlat,self.longlat_to_pgid,self.pgid_to_index,\
+        self.index_to_pgid,self.ncells,self.power=utilities._map_pgids_2d(df)
 	
         powers=[((2**p)**2) for p in range(self.power+1)]
 
@@ -440,79 +368,7 @@ class SpatialTree():
         return
 
 
-    def df_to_tensor_no_strides(self,df):
 
-        # get shape of dataframe
-
-        dim0,dim1=df.index.levshape
-
-        dim2=df.shape[1]
-
-        # check that df can in principle be tensorised
-
-        if dim0*dim1!=df.shape[0]:
-            raise Exception("df cannot be cast to a tensor - dim0 * dim1 != df.shape[0]",dim0,dim1,df.shape[0])
-
-
-        flat=df.to_numpy()
-
-        tensor3d=np.empty((dim0,dim1,dim2))
-        chunksize=dim1
-        nchunks=dim0
-        for ichunk in range(nchunks):
-            tensor3d[ichunk,:,:]=flat[ichunk*chunksize:(ichunk+1)*chunksize,:]
-
-        return tensor3d
-
-    def df_to_tensor_strides(self,
-    df
-):
-        '''
-        df_to_tensor created 13/03/2021 by Jim Dale
-        Uses as_strided from numpy stride_tricks library to create a tensorlike
-        from a dataframe.
-
-        There are two possibilities:
-
-        (i) If the dataframe is uniformly-typed, the tensor is a memory view:
-        changes to values in the tensor are reflected in the source dataframe.
-
-        (ii) Otherwise, the tensor is a copy of the dataframe and changes in it
-        are not propagated to the dataframe.
-
-        Note that dim0 of the tensor corresponds to level 0 of the df multiindex,
-        dim1 corresponds to level 1 of the df multiindex, and dim2 corresponds to
-        the df's columns.
-        '''
-
-        # get shape of dataframe
-
-        dim0,dim1=df.index.levshape
-
-        dim2=df.shape[1]
-
-        # check that df can in principle be tensorised
-
-        if dim0*dim1!=df.shape[0]:
-            raise Exception("df cannot be cast to a tensor - dim0 * dim1 != df.shape[0]",dim0,dim1,df.shape[0])
-
-        flat=df.to_numpy()
-
-        # get strides (in bytes) of flat array
-        flat_strides=flat.strides
-
-        offset2=flat_strides[1]
-
-        offset1=flat_strides[0]
-
-        # compute stride in bytes along dimension 0
-        offset0=dim1*offset1
-
-        # get memory view or copy as a numpy array
-        tensor3d=np.lib.stride_tricks.as_strided(flat,shape=(dim0,dim1,dim2),
-                                           strides=(offset0,offset1,offset2))
-
-        return tensor3d
 
     def stock(self,df,use_stride_tricks=True):
 
@@ -531,26 +387,23 @@ class SpatialTree():
 
         '''
 
-        features=df.columns
 		
-        self.features=features
+        self.features=utilities._map_features(df)
 
-        times=np.array(list({idx[0] for idx in df.index.values}))
-        times=list(np.sort(times))
-        self.times=times
+        self.times,_,_=utilities._map_times(df)
 
         for node in self.nodes:
-            for feature in features:
-                node.features[feature]=np.zeros(len(times))
+            for feature in self.features:
+                node.features[feature]=np.zeros(len(self.times))
 
                 # TODO weighted centres
 
         if (use_stride_tricks):
-            tensor3d=self.df_to_tensor_strides(df)
+            tensor3d=utilities._df_to_tensor_strides(df)
         else:
-            tensor3d=self.df_to_tensor_no_strides(df)
+            tensor3d=utilities._df_to_tensor_no_strides(df)
 
-        for ifeature,feature in enumerate(features):
+        for ifeature,feature in enumerate(self.features):
             for node in self.nodes:
                 if node.isleaf:
                     pgid=node.pgid
