@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+import utilities
 
-def get_tree_lag(df,thetacrit,weight_functions,sigma):
+
+def get_tree_lag(df,thetacrit,weight_functions,sigma,use_stride_tricks):
     
     '''
     get_tree_lag
@@ -32,11 +32,9 @@ def get_tree_lag(df,thetacrit,weight_functions,sigma):
     
     tree=TemporalTree()
 
-    tree.map_times(df)
-
     tree.build_tree(df)
     
-    tree.stock_initial(df)
+    tree.stock_initial(df,use_stride_tricks)
     
     df_treelags=tree.tree_lag(df,thetacrit,weight_functions,sigma)
     
@@ -102,65 +100,6 @@ class TemporalTree():
         self.weight_functions={}
         
         self.make_weight_functions()
-        
-    def map_times(self,df):
-    # get unique times
-
-        times=np.array(list({idx[0] for idx in df.index.values}))
-        times=list(np.sort(times))
-        self.times=times
-    
-    # make dicts to transform between times and the index of a time in the list
-          
-        for i,time in enumerate(times):
-            self.time_to_index[time]=i
-            self.index_to_time[i]=time
-    
-        return 
-        
-    def map_features(self,df):
-
-        self.features=list(df.columns)
-        
-        return
-        
-    def map_pgids(self,df):
-	
-        PG_STRIDE=720
-	
-		# get unique pgids
-	
-        pgids=np.array(list({idx[1] for idx in df.index.values}))
-        pgids=np.sort(pgids)
-        self.pgids=pgids
-        
-        for i,pgid in enumerate(pgids):
-            self.pgid_to_index[pgid]=i
-            self.index_to_pgid[i]=pgid
-        return
-        
-    def df_to_tensor_no_strides(self,df):
-    
-        # get shape of dataframe
-    
-        dim0,dim1=df.index.levshape
-    
-        dim2=df.shape[1]
-        
-        # check that df can in principle be tensorised
-    
-        if dim0*dim1!=df.shape[0]:
-            raise Exception("df cannot be cast to a tensor - dim0 * dim1 != df.shape[0]",dim0,dim1,df.shape[0])
-
-        flat=df.to_numpy()
-
-        tensor3d=np.empty((dim0,dim1,dim2))
-        chunksize=dim1
-        nchunks=dim0
-        for ichunk in range(nchunks):
-            tensor3d[ichunk,:,:]=flat[ichunk*chunksize:(ichunk+1)*chunksize,:]
-
-        return tensor3d        
     
     def build_tree(self,df):
        
@@ -178,7 +117,7 @@ class TemporalTree():
 	   
 	    '''
        
-        self.map_times(df)
+        self.times,self.time_to_index,self.index_to_time=utilities._map_times(df)
         
         tstart=self.times[0]
         tend=self.times[-1]
@@ -259,7 +198,7 @@ class TemporalTree():
                         descendnode=self.nodes[descendnode.children[1]]
                     node.predecessor=descendnode.nodeid
         
-    def stock_initial(self,df):
+    def stock_initial(self,df,use_stride_tricks):
     
         '''
         stock_initial
@@ -282,8 +221,9 @@ class TemporalTree():
             
         self.stocked=True
 
-        self.map_features(df)
-        self.map_pgids(df)
+        self.features=utilities._map_features(df)
+        
+        self.pgids,self.pgid_to_index,self.index_to_pgid=utilities._map_pgids_1d(df)
 		
         npgids=len(self.pgids)
 		
@@ -291,7 +231,11 @@ class TemporalTree():
             for feature in self.features:
                 node.features[feature]=np.zeros(npgids)
                 
-        tensor3d=self.df_to_tensor_no_strides(df)
+        if(use_stride_tricks):
+            tensor3d=utilities._df_to_tensor_strides(df)
+        else:
+            tensor3d=utilities._df_to_tensor_strides(df)
+
         
         for time in self.times:
             itime=self.time_to_index[time]
@@ -334,7 +278,6 @@ class TemporalTree():
             print('tree has not been stocked as far as tnow - aborting')
             raise(Exception)
             
-#        self.set_weight_fn(weightfunction)
         list_of_nodes=[]
 
         for node in self.nodes:
@@ -392,17 +335,17 @@ class TemporalTree():
                     list_of_nodes.append(node.nodeid)
 
     def make_weight_functions(self):
-        self.weight_functions['uniform']=self.uniform
-        self.weight_functions['oneovert']=self.oneovert
-        self.weight_functions['sigmoid']=self.sigmoid
-        self.weight_functions['expon']=self.expon
-        self.weight_functions['ramp']=self.ramp
+        self.weight_functions['uniform']=self._uniform
+        self.weight_functions['oneovert']=self._oneovert
+        self.weight_functions['sigmoid']=self._sigmoid
+        self.weight_functions['expon']=self._expon
+        self.weight_functions['ramp']=self._ramp
                     
-    def uniform(self,node_list,tnow,sigma=1):
+    def _uniform(self,node_list,tnow,sigma=1):
         weights=np.ones(len(node_list))
         return weights
 
-    def oneovert(self,node_list,tnow,sigma=1):
+    def _oneovert(self,node_list,tnow,sigma=1):
         weights=np.zeros(len(node_list))
         for i in range(len(node_list)):
             mid=(self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
@@ -410,7 +353,7 @@ class TemporalTree():
             weights[i]=1./lag
         return weights
     
-    def sigmoid(self,node_list,tnow,sigma=1):
+    def _sigmoid(self,node_list,tnow,sigma=1):
         weights=np.zeros(len(node_list))
         offset=5.
         sigma/=offset
@@ -421,7 +364,7 @@ class TemporalTree():
 
         return weights
     
-    def expon(self,node_list,tnow,sigma=1):
+    def _expon(self,node_list,tnow,sigma=1):
         weights=np.zeros(len(node_list))
         for i in range(len(node_list)):
             mid=(self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
@@ -437,7 +380,7 @@ class TemporalTree():
 
         return weights
     
-    def ramp(self,node_list,tnow,sigma=1):
+    def _ramp(self,node_list,tnow,sigma=1):
         weights=np.zeros(len(node_list))
         for i in range(len(node_list)):
             mid=(self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
