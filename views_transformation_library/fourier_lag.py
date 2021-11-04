@@ -2,7 +2,7 @@ import numpy as np
 import scipy 
 from scipy.fftpack import fft2,ifft2,dst,idst
 import pandas as pd
-import utilities
+from views_transformation_library from views_transformation_library import utilities
 
 def get_fourier_lag(df,dimensionality,use_stride_tricks=True):
 
