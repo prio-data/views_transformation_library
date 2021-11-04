@@ -3,7 +3,7 @@ import pandas as pd
 
 from scipy import ndimage
 
-import utilities
+from views_transformation_library import utilities
    
 def get_splag4d(
     df,

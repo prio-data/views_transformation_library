@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import utilities
+from views_transformation_library import utilities
 
 
 def get_tree_lag(df,thetacrit,weight_functions,sigma,use_stride_tricks):
