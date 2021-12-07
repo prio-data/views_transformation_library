@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import stepshift
+from stepshift import cast
 from views_transformation_library import utilities
 
 
@@ -173,9 +174,9 @@ def splag_cm(df, kernel_inner, kernel_width, kernel_power, norm_kernel):
 
     """
 
-    df_matrix = stepshift.cast.views_format_to_castable(df)
+    df_matrix = cast.views_format_to_castable(df)
 
-    df_tensor = stepshift.cast.time_unit_feature_cube(df_matrix)
+    df_tensor = cast.time_unit_feature_cube(df_matrix)
 
     data_month_ids = df_tensor.coords["time"].values
     data_country_ids = df_tensor.coords["unit"].values
