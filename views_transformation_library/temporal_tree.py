@@ -430,7 +430,9 @@ class TemporalTree():
        
         df_column_names=['tree_tlag_'+function+'_'+feature for feature in self.features for function in weight_functions]
         
-        df_index=pd.MultiIndex.from_product([self.times, self.pgids])    
+        index_names=df.index.names
+        
+        df_index=pd.MultiIndex.from_product([self.times, self.pgids],names=index_names)    
     
         df_treelags=pd.DataFrame(flat, index=df_index, columns=df_column_names)
     

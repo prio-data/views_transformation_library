@@ -27,15 +27,25 @@ def get_splag4d(
     
     use_stride_tricks: boolean, decide to use stride_tricks or not (optional, 
                        defaults to True)
-                       
-    weights:           weight matrix to use in convolutions (optional, defaults to
-                       first-order lag, with zero at [1,1])
+   
+    kernel_inner:      inner border of convolution region (set to 1 to exclude central
+                       cell)
+
+    kernel_width:      width in cells of kernel, so outer radius of kernel =
+                       kernel_inner + kernel_width
+
+    kernel_power:      weight values of cells by (distance from centre of kernel)**
+                       (-kernel_power) - set to zero for no distance weighting
+
+    norm_kernel:       set to 1 to normalise kernel weights
                        
     Returns:
     
     A df of all lagged columns from input df
     
     '''
+
+    arg_string=str(kernel_inner)+'_'+str(kernel_width)+'_'+str(kernel_power)+'_'+str(norm_kernel)
 
     df=df.fillna(0.0)
     if not(df.index.is_monotonic):
@@ -66,6 +76,7 @@ def get_splag4d(
     splags=get_splags(tensor4d,ncells,ncells,times,features,time_to_index,weights)
 
     df_splags=splags_to_df(
+                           df,
                            splags,
                            times,
                            time_to_index,
@@ -73,7 +84,8 @@ def get_splag4d(
                            features,
                            ncells,
                            ncells,
-                           longlat_to_pgid
+                           longlat_to_pgid,
+                           arg_string
                            )
 
     return df_splags
@@ -126,7 +138,7 @@ def get_splags(
 
     return splags
     
-def splags_to_df(
+def splags_to_df(df,
     splags,
     times,
     time_to_index,
@@ -134,7 +146,8 @@ def splags_to_df(
     features,
     longrange,
     latrange,
-    longlat_to_pgid
+    longlat_to_pgid,
+    argstring
 ):
 
     final=np.empty((len(times)*len(pgids),len(features)))
@@ -159,9 +172,12 @@ def splags_to_df(
             except:
                 pass
             
-    splags_index=pd.MultiIndex.from_product([list(times),pgids_for_index])
-    colnames=['splag_'+feature for feature in features]
-    df_splags=pd.DataFrame(data=final,columns=colnames,index=splags_index)
+    index_names=df.index.names
+        
+    df_index=pd.MultiIndex.from_product([list(times),pgids_for_index],names=index_names)
+        
+    colnames=['splag_'+argstring+'_'+feature for feature in features]
+    df_splags=pd.DataFrame(data=final,columns=colnames,index=df_index)
 
     df_splags=df_splags.sort_index()
 
