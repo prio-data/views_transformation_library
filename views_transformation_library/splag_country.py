@@ -1,41 +1,57 @@
 import numpy as np
 import pandas as pd
 import stepshift
+from stepshift import cast
 from views_transformation_library import utilities
 
 
 def get_splag_country(
-    df, kernel_inner=1, kernel_width=1, kernel_power=0, norm_kernel=0
-):
+        df:           pd.DataFrame,
+        kernel_inner: int = 1,
+        kernel_width: int = 1,
+        kernel_power: int = 0,
+        norm_kernel:  int = 0)-> pd.DataFrame:
 
     """
     get_splag_country
+    =================
+
+    parameters:
+        df (pandas.DataFrame): single-column dataframe containing feature to be
+                               transformed.
+
+        kernel_inner (int):    Inner radius of convolution kernel - '1'
+                               represents the target country, '2' represents
+                               the target country plus its first-order
+                               neighbours, and so on.
+
+        kernel_outer (int):    Width of convolution kernel - '1' represents
+                               (kernel_inner+1)-th order neighbours,  '2'
+                               represents (kernel_inner+2)-th order neighbours,
+                               and so on.
+
+        kernel_power (int):    Countries are weighted by:
+                               (distance from target country)^kernel_power 
+                               kernel_power=0 results in unweighted results
+
+        norm_kernel (int):     If set to 1, the sum of the weights over all
+                               neighbours for a given target country is
+                               normalised to 1.0
+
+    returns:
+        pandas.DataFrame: Dataframe with the lagged variable
 
     Performs convolutional spatial lags at the country level.
 
-    Country first-order neighbours are obtained directly from the country_country_month_
-    expanded table and represented as a month x country x country tensor.
+    Country first-order neighbours are obtained directly from the
+    country_country_month_ expanded table and represented as a month x country
+    x country tensor.
 
     n-th order neighbours are obtained iteratively.
 
-    Arguments:
-
-    df:            single-column dataframe containing feature to be transoformed
-
-    kernel_inner:  inner radius of convolution kernel - '1' represents the target
-                   country, '2' represents the target country plus its first-order
-                   neighbours, and so on
-
-    kernel_outer:  width of convolution kernel - '1' represents (kernel_inner+1)-th
-                   order neighbours,  '2' represents (kernel_inner+2)-th order
-                   neighbours, and so on
-
-    kernel_power:  countries are weighted by (distance from target country)^kernel_power
-                   kernel_power=0 results in unweighted results
-
-    norm_kernel:   if set to 1, the sum of the weights over all neighbours for a given
-                   target country is normalised to 1.0
-
+    The lagged variable is named following this pattern:
+    "splag_{kernel_inner}_{kernel_outer}_{kernel_power}_{feature_name}"
+    
     """
 
     month_to_index, country_to_index, splag = splag_cm(
@@ -173,9 +189,9 @@ def splag_cm(df, kernel_inner, kernel_width, kernel_power, norm_kernel):
 
     """
 
-    df_matrix = stepshift.cast.views_format_to_castable(df)
+    df_matrix = cast.views_format_to_castable(df)
 
-    df_tensor = stepshift.cast.time_unit_feature_cube(df_matrix)
+    df_tensor = cast.time_unit_feature_cube(df_matrix)
 
     data_month_ids = df_tensor.coords["time"].values
     data_country_ids = df_tensor.coords["unit"].values

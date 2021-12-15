@@ -1,4 +1,5 @@
 import numpy as np
+import xarray
 import ingester3
 from ingester3.Country import Country
 from ingester3.scratch import fetch_data
