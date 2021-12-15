@@ -1,8 +1,10 @@
 [tool.poetry]
 name = "views-transformation-library"
-version = "2.2.1"
+version = "2.2.2"
 description = ""
-authors = ["peder2911 <pglandsverk@gmail.com>"]
+authors = [
+   "peder2911 <pglandsverk@gmail.com>",
+   "jimdale <jim.dale@pcr.uu.se>"]
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.10"

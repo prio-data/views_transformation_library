@@ -60,6 +60,7 @@ def get_fourier_lag(df,dimensionality,use_stride_tricks=True):
     flags=transformer(tensor4d,times,features,time_to_index)
     
     df_flags=flags_to_df(
+                         df,
                          flags,
                          times,
                          time_to_index,
@@ -259,6 +260,7 @@ def fft_3D(tensor4d,times,features,time_to_index):
     return transformed
 
 def flags_to_df(
+    df,
     flags,
     times,
     time_to_index,
@@ -291,9 +293,12 @@ def flags_to_df(
             except:
                 pass
             
-    splags_index=pd.MultiIndex.from_product([list(times),pgids_for_index])
+    index_names=df.index.names
+        
+    df_index=pd.MultiIndex.from_product([list(times),pgids_for_index],names=index_names)
+            
     colnames=['flag_'+feature for feature in features]
-    df_flags=pd.DataFrame(data=final,columns=colnames,index=splags_index)
+    df_flags=pd.DataFrame(data=final,columns=colnames,index=df_index)
 
     df_flags=df_flags.sort_index()
 

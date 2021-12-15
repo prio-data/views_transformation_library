@@ -29,6 +29,9 @@ def get_tree_lag(df,thetacrit,weight_functions,sigma,use_stride_tricks):
     df=df.fillna(0.0)
     if not(df.index.is_monotonic):
         df=df.sort_index()
+        
+    if type(weight_functions)!='list':
+        weight_functions=[weight_functions,]
     
     tree=TemporalTree()
 
@@ -430,7 +433,9 @@ class TemporalTree():
        
         df_column_names=['tree_tlag_'+function+'_'+feature for feature in self.features for function in weight_functions]
         
-        df_index=pd.MultiIndex.from_product([self.times, self.pgids])    
+        index_names=df.index.names
+        
+        df_index=pd.MultiIndex.from_product([self.times, self.pgids],names=index_names)    
     
         df_treelags=pd.DataFrame(flat, index=df_index, columns=df_column_names)
     
