@@ -92,7 +92,12 @@ def get_country_neighbours(
 
     """
 
-    inner_neighbs = neighbs.copy()
+    if ninner < 0:
+        inner_neighbs=[]
+        ninner=0
+    else:
+        inner_neighbs = neighbs.copy()
+    
     inner_neighbs = get_nth_order_neighbours_from_tensor(
         inner_neighbs,
         month_id,
@@ -103,7 +108,13 @@ def get_country_neighbours(
         neighb_tensor_data,
     )
 
-    outer_neighbs = neighbs.copy()
+
+    if nouter < 0:
+        outer_neighbs=[]
+        nouter=0
+    else:
+        outer_neighbs = neighbs.copy()
+    
     outer_neighbs = get_nth_order_neighbours_from_tensor(
         outer_neighbs,
         month_id,
@@ -235,7 +246,7 @@ def splag_cm(df, kernel_inner, kernel_width, kernel_power, norm_kernel):
     splag = np.zeros_like(df_tensor.values)
 
     ninner = kernel_inner - 1
-    nouter = ninner + kernel_width
+    nouter = ninner + kernel_width 
 
     for month_id in data_month_ids:
         data_month_index = data_month_to_index[month_id]
