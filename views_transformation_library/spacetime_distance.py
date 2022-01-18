@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
-
-import utilities
+from views_transformation_library import utilities
 
 
 def get_spacetime_distances(df,return_values='distances',k=1,nu=1.0,power=0.0):
