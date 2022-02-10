@@ -5,8 +5,9 @@ description = ""
 authors = [
    "peder2911 <pglandsverk@gmail.com>",
    "jimdale <jim.dale@pcr.uu.se>",
-   "rbjansen <r.b.jansen.uu@gmail.com",
-   "frehoy <frederick.hoyles@gmail.com"]
+   "rbjansen <r.b.jansen.uu@gmail.com>",
+   "frehoy <frederick.hoyles@gmail.com>",
+   "mihaicroicu <mihai.croicu@pcr.uu.se>"]
 license = "CC-BY-NC"
 
 [tool.poetry.dependencies]
