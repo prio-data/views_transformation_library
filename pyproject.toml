@@ -4,7 +4,9 @@ version = "2.3.2"
 description = ""
 authors = [
    "peder2911 <pglandsverk@gmail.com>",
-   "jimdale <jim.dale@pcr.uu.se>"]
+   "jimdale <jim.dale@pcr.uu.se>",
+   "rbjansen <r.b.jansen.uu@gmail.com",
+   "frehoy <frederick.hoyles@gmail.com"]
 license = "CC-BY-NC"
 
 [tool.poetry.dependencies]
