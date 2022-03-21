@@ -1,10 +1,18 @@
 [tool.poetry]
 name = "views-transformation-library"
+
 version = "2.4.0"
-description = ""
+description = "A package containing data transformation functions used by the ViEWS team"
+homepage = "https://www.github.com/prio-data/views_transformation_library"
+readme = "README.md"
+
 authors = [
    "peder2911 <pglandsverk@gmail.com>",
-   "jimdale <jim.dale@pcr.uu.se>"]
+   "jimdale <jim.dale@pcr.uu.se>",
+   "rbjansen <r.b.jansen.uu@gmail.com>",
+   "frehoy <frederick.hoyles@gmail.com>",
+   "mihaicroicu <mihai.croicu@pcr.uu.se>"]
+license = "CC-BY-NC"
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.10"
@@ -13,7 +21,7 @@ scipy = "^1.6.2"
 xarray = ">=0.19.0"
 stepshift = ">=1.2.0"
 ingester3 = ">=0.6.0"
-scikit_learn = "1.0.1"
+scikit_learn = "^1.0.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
