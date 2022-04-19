@@ -6,7 +6,8 @@ from views_transformation_library import utilities
 
 def get_temporal_entropy(
         df,
-        window
+        window,
+        offset=0.
 
 ):
     """"
@@ -22,7 +23,13 @@ def get_temporal_entropy(
 
     df:                a dataframe of series to be splagged
 
-    window:            intger size of window
+    window:            integer size of window
+
+    offset:            datasets containing mostly zeros will return
+                       NaNs or Infs for entropy most or all of the time.
+                       Since this is unlikely to be desirable, an
+                       offset can be added to all feature values. so
+                       that sensible values for entropy are returned.
 
     Returns:
 
@@ -43,9 +50,9 @@ def get_temporal_entropy(
 
     tensor3d = utilities._df_to_tensor_strides(df)
 
-    sum_over_window = np.zeros_like(tensor3d)
+    tensor3d+=offset
 
-    mean_over_window = np.zeros_like(tensor3d)
+    sum_over_window = np.zeros_like(tensor3d)
 
     entropy = np.zeros_like(tensor3d)
 
@@ -55,21 +62,21 @@ def get_temporal_entropy(
         else:
             istart = itime - window + 1
 
-        print(istart,itime)
+
         sum_over_window[itime, :, :] = np.sum(tensor3d[istart:itime+1], axis=0)
-        mean_over_window[itime, :, :] = np.mean(tensor3d[istart:itime+1], axis=0)
 
-    individual_values = (tensor3d / sum_over_window) * np.log2(tensor3d / sum_over_window)
+        entropy[itime,:,:]=-np.sum(tensor3d[istart:itime+1]/sum_over_window[itime, :, :]*np.log2(tensor3d[istart:itime+1]/sum_over_window[itime, :, :]), axis=0)
+#    individual_values = (tensor3d / sum_over_window) * np.log2(tensor3d / sum_over_window)
 
-    for itime in range(len(times)):
-        if itime < window -1 :
-            istart = 0
-        else:
-            istart = itime - window + 1
+#    for itime in range(len(times)):
+#        if itime < window -1 :
+#            istart = 0
+#        else:
+#            istart = itime - window + 1
 
-        print(istart,itime)
-        print(individual_values[istart:itime+1])
-        entropy[itime, :, :] = -np.sum(individual_values[istart:itime+1], axis=0)
+
+#        print(individual_values[istart:itime+1])
+#        entropy[itime, :, :] = -np.sum(individual_values[istart:itime+1], axis=0)
 
     df_entropy = entropy_to_df_strides(entropy,times,pgids,features,df_index)
 
