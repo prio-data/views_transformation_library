@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "views-transformation-library"
 
-version = "2.4.1"
+version = "2.5.0"
 description = "A package containing data transformation functions used by the ViEWS team"
 homepage = "https://www.github.com/prio-data/views_transformation_library"
 readme = "README.md"
