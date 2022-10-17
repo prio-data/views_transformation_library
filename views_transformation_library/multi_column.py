@@ -2,58 +2,60 @@ import numpy as np
 import pandas as pd
 
 
-def add_column(df_left, df_right):
+def add_column(df):
 
-    assert(validate_dfs(df_left, df_right))
+    df_left, df_right = get_left_right(df)
 
     df_sum = pd.DataFrame(index = df_left.index)
 
-    df_sum['sum'] = df_left.values + df_right.values
+    df_sum[df_left.columns[0]] = df_left.values + df_right.values
 
     return df_sum
 
 
-def subtract_column(df_left, df_right):
+def subtract_column(df):
 
-    assert (validate_dfs(df_left, df_right))
+    df_left, df_right = get_left_right(df)
 
     df_diff = pd.DataFrame(index=df_left.index)
 
-    df_diff['diff'] = df_left.values - df_right.values
+    df_diff[df_left.columns[0]] = df_left.values - df_right.values
 
     return df_diff
 
 
-def multiply_column(df_left, df_right):
+def multiply_column(df):
 
-    assert (validate_dfs(df_left, df_right))
+    df_left, df_right = get_left_right(df)
 
     df_mult = pd.DataFrame(index=df_left.index)
 
-    df_mult['mult'] = df_left.values * df_right.values
+    df_mult[df_left.columns[0]] = df_left.values * df_right.values
 
     return df_mult
 
 
-def divide_column(df_left, df_right):
+def divide_column(df):
 
-    assert (validate_dfs(df_left, df_right))
+    df_left, df_right = get_left_right(df)
 
     df_div = pd.DataFrame(index=df_left.index)
 
-    df_div['div'] = df_left.values / df_right.values
+    df_div[df_left.columns[0]] = df_left.values / df_right.values
 
     return df_div
 
 
-def validate_dfs(df_left, df_right):
+def get_left_right(df):
 
-    passed = True
+    assert len(df.columns) == 2
 
-    if df_left.index.names != df_right.index.names:
-        passed = False
+    left_column = df.columns[0]
 
-    if not(np.array_equal(df_left.index.to_numpy(), df_right.index.to_numpy())):
-        passed = False
+    right_column = df.columns[1]
 
-    return passed
+    df_left = pd.DataFrame(df[left_column])
+
+    df_right = pd.DataFrame(df[right_column])
+
+    return df_left, df_right
