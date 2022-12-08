@@ -3,9 +3,9 @@ import numpy as np
 from views_transformation_library import utilities
 
 
-def get_tree_lag(df,thetacrit,weight_functions,sigma,use_stride_tricks):
+def get_tree_lag(df, thetacrit, weight_functions, sigma, use_stride_tricks):
     
-    '''
+    """
     get_tree_lag
     
     Driver function for computing temporal-tree-lagged features
@@ -24,24 +24,25 @@ def get_tree_lag(df,thetacrit,weight_functions,sigma,use_stride_tricks):
     
     sigma: parameter in time units used by df controlling width of expon, ramp and sigmoid functions
     
-    '''
+    """
     
-    df=df.fillna(0.0)
-    if not(df.index.is_monotonic):
-        df=df.sort_index()
+    df = df.fillna(0.0)
+    if not df.index.is_monotonic:
+        df = df.sort_index()
         
-    if type(weight_functions)!='list':
-        weight_functions=[weight_functions,]
+    if type(weight_functions) != 'list':
+        weight_functions = [weight_functions, ]
     
-    tree=TemporalTree()
+    tree = TemporalTree()
 
     tree.build_tree(df)
     
-    tree.stock_initial(df,use_stride_tricks)
+    tree.stock_initial(df, use_stride_tricks)
     
-    df_treelags=tree.tree_lag(df,thetacrit,weight_functions,sigma)
+    df_treelags = tree.tree_lag(df, thetacrit, weight_functions, sigma)
     
     return df_treelags
+
 
 class TemporalNode():
     """
@@ -62,7 +63,7 @@ class TemporalNode():
     - features: dict of features loaded into the node by the .stock() method
     
     """    
-    def __init__(self,nodeid,level,start,end,parent,sibling,predecessor,ispast,isleaf):
+    def __init__(self, nodeid, level, start, end, parent, sibling, predecessor, ispast, isleaf):
         self.nodeid = nodeid
         self.level = level
         self.start = start
@@ -81,129 +82,142 @@ class TemporalNode():
         end: {self.end}\n bottom: {self.bottom}\n isleaf: {self.isleaf}\n children: {self.children}
         predecessor: {self.predecessor}\n sibling: {self.sibling}\n"""
 
+
 class TemporalTree():
     """
     TemporalTree() class
     """  
     def __init__(self):
-        self.gridsize=0
-        self.nodes=[]
-        self.maxlevel=-1
-        self.stocked=False
-        self.stocked_until=-1
-        self.weight_fn=None
-        self.timesequence=[]
-        self.npad=0
-        self.times=[]
-        self.time_to_index={}
-        self.index_to_time={}
-        self.pgid_to_index={}
-        self.index_to_pgid={}
+        self.gridsize = 0
+        self.nodes = []
+        self.pgids = None
+        self.maxlevel = -1
+        self.stocked = False
+        self.stocked_until = -1
+        self.weight_fn = None
+        self.timesequence = []
+        self.npad = 0
+        self.times = []
+        self.time_to_index = {}
+        self.index_to_time = {}
+        self.pgid_to_index = {}
+        self.index_to_pgid = {}
         self.features = {}
-        self.weight_functions={}
+        self.weight_functions = {}
         
         self.make_weight_functions()
     
-    def build_tree(self,df):
+    def build_tree(self, df):
        
-        '''
-	    build_tree
-	   
-	    This function builds the tree from the leaf nodes downwards.
-	   
-	    The total number of leaf nodes must be an integer power of two, so the list of 
-	    times is padded with dummy nodes placed before the earliest time the tree is
-	    built on.
-	   
-	    Once leaf nodes are populated, work down through the levels. Assign parents,
-	    siblings and predecessors
-	   
-	    '''
-       
-        self.times,self.time_to_index,self.index_to_time=utilities._map_times(df)
+        """
+        build_tree
+
+        This function builds the tree from the leaf nodes downwards.
+
+        The total number of leaf nodes must be an integer power of two, so the list of
+        times is padded with dummy nodes placed before the earliest time the tree is
+        built on.
+
+        Once leaf nodes are populated, work down through the levels. Assign parents,
+        siblings and predecessors
+
+        """
+
+        self.times, self.time_to_index, self.index_to_time = utilities._map_times(df)
         
-        tstart=self.times[0]
-        tend=self.times[-1]
+        tstart = self.times[0]
+        tend = self.times[-1]
         
-        nseq_initial=tend-tstart
-        log2_nseq_initial=np.log2(nseq_initial)
-        nseq=int(2**(1+int(log2_nseq_initial)))
-        npad=nseq-nseq_initial
+        nseq_initial = tend-tstart
+        log2_nseq_initial = np.log2(nseq_initial)
+        nseq = int(2**(1+int(log2_nseq_initial)))
+        npad = nseq-nseq_initial
         
-        self.timesequence=[t for t in range(tstart-npad,tend+1)]
-        self.npad=npad
+        self.timesequence = [t for t in range(tstart-npad, tend+1)]
+        self.npad = npad
         
-        nodestodo=[]
-        nnodes=0
-        level=0
-        maxlevel=0
-        parent=-1
-        sibling=-1
-        predecessor=-1
-        ispast=False
-        isleaf=False
-        node=TemporalNode(nnodes,level,tstart-npad,tend,parent,sibling,predecessor,ispast,isleaf)
+        nodestodo = []
+        nnodes = 0
+        level = 0
+        maxlevel = 0
+        parent = -1
+        sibling = -1
+        predecessor = -1
+        ispast = False
+        isleaf = False
+        node = TemporalNode(nnodes, level, tstart-npad, tend, parent, sibling, predecessor, ispast, isleaf)
         self.nodes.append(node)
         nodestodo.append(node)
         
-        while len(nodestodo)>0:
-            splitnode=nodestodo.pop()
+        while len(nodestodo) > 0:
+            splitnode = nodestodo.pop()
             
-            if (splitnode.end-splitnode.start)>1:
-                nnodes+=1
-                if (splitnode.start>=0):
-                    mid=int((splitnode.start+splitnode.end+1)/2)
+            if (splitnode.end-splitnode.start) > 1:
+                nnodes += 1
+                if splitnode.start >= 0:
+                    mid = int((splitnode.start+splitnode.end+1)/2)
                 else:
-                    mid=int((splitnode.start+splitnode.end)/2)
+                    mid = int((splitnode.start+splitnode.end)/2)
 
-                level=splitnode.level+1
-                maxlevel=max(maxlevel,level)
-                parent=splitnode.nodeid
-                sibling=None
-                predecessor=None
-                ispast=True
-                if (mid-splitnode.start)>1:
-                    isleaf=False
+                level = splitnode.level+1
+                maxlevel = max(maxlevel, level)
+                parent = splitnode.nodeid
+                sibling = None
+                predecessor = None
+                ispast = True
+                if (mid-splitnode.start) > 1:
+                    isleaf = False
                 else:
-                    isleaf=True
-                pastnode=TemporalNode(nnodes,level,splitnode.start,mid,parent,sibling,predecessor,ispast,isleaf)
+                    isleaf = True
+                pastnode = TemporalNode(nnodes, level, splitnode.start, mid, parent, sibling, predecessor, ispast,
+                                        isleaf)
+
                 self.nodes.append(pastnode)
+
                 nodestodo.append(pastnode)
-                nnodes+=1
-                ispast=False
-                futurenode=TemporalNode(nnodes,level,mid,splitnode.end,parent,sibling,predecessor,ispast,isleaf)
+
+                nnodes += 1
+                ispast = False
+                futurenode = TemporalNode(nnodes, level, mid, splitnode.end, parent, sibling, predecessor, ispast,
+                                          isleaf)
+
                 self.nodes.append(futurenode)
+
                 nodestodo.append(futurenode)
-                pastnode.sibling=futurenode.nodeid
-                futurenode.sibling=pastnode.nodeid
-                futurenode.predecessor=pastnode.nodeid
-                splitnode.children=[pastnode.nodeid,futurenode.nodeid]
+
+                pastnode.sibling = futurenode.nodeid
+
+                futurenode.sibling = pastnode.nodeid
+
+                futurenode.predecessor = pastnode.nodeid
+
+                splitnode.children = [pastnode.nodeid, futurenode.nodeid]
                 
-        self.maxlevel=maxlevel
+        self.maxlevel = maxlevel
         
         for node in self.nodes:
             while node.predecessor is None:
-                if node.start<=(self.timesequence[0]+self.npad):
-                    node.predecessor=-1
+                if node.start <= (self.timesequence[0]+self.npad):
+                    node.predecessor = -1
                 else:
-                    level=node.level
-                    climb=True
-                    climbnode=self.nodes[node.parent]
+                    level = node.level
+                    climb = True
+                    climbnode = self.nodes[node.parent]
                     while climb:
                         if climbnode.ispast:
-                            climbnode=self.nodes[climbnode.parent]
+                            climbnode = self.nodes[climbnode.parent]
                         else:
-                            descendnode=self.nodes[climbnode.sibling]
-                            climb=False
-                    descendlevel=descendnode.level
+                            descendnode = self.nodes[climbnode.sibling]
+                            climb = False
+                    descendlevel = descendnode.level
 
-                    while descendnode.level!=level:
-                        descendnode=self.nodes[descendnode.children[1]]
-                    node.predecessor=descendnode.nodeid
+                    while descendnode.level != level:
+                        descendnode = self.nodes[descendnode.children[1]]
+                    node.predecessor = descendnode.nodeid
         
-    def stock_initial(self,df,use_stride_tricks):
+    def stock_initial(self, df, use_stride_tricks):
     
-        '''
+        """
         stock_initial
         
         This function loads features into the tree.
@@ -216,186 +230,186 @@ class TemporalTree():
         
         At present, values of parents are the *sums* of those of their children.
         
-        '''
+        """
     
         if self.stocked:
             print('Tree has already been stocked - aborting')
             raise(Exception)
             
-        self.stocked=True
+        self.stocked = True
 
-        self.features=utilities._map_features(df)
+        self.features = utilities._map_features(df)
         
-        self.pgids,self.pgid_to_index,self.index_to_pgid=utilities._map_pgids_1d(df)
-		
-        npgids=len(self.pgids)
-		
+        self.pgids, self.pgid_to_index, self.index_to_pgid = utilities._map_pgids_1d(df)
+
+        npgids = len(self.pgids)
+
         for node in self.nodes:
             for feature in self.features:
-                node.features[feature]=np.zeros(npgids)
+                node.features[feature] = np.zeros(npgids)
                 
-        if(use_stride_tricks):
-            tensor3d=utilities._df_to_tensor_strides(df)
+        if use_stride_tricks:
+            tensor3d = utilities._df_to_tensor_strides(df)
         else:
-            tensor3d=utilities._df_to_tensor_strides(df)
+            tensor3d = utilities._df_to_tensor_strides(df)
 
-        
         for time in self.times:
-            itime=self.time_to_index[time]
+            itime = self.time_to_index[time]
             for node in self.nodes:
-                if (node.isleaf and node.start==time):
-                    for ifeature,feature in enumerate(self.features):
-                        vals=tensor3d[itime,:,ifeature]
-                        node.features[feature]+=vals
-                        node.nleaf=1
-                        parentid=node.parent
-                        while parentid!=-1:
-                            parent=self.nodes[parentid]
-                            parent.features[feature]+=vals
-                            parent.nleaf+=1
-                            parentid=parent.parent
+                if node.isleaf and (node.start == time):
+                    for ifeature, feature in enumerate(self.features):
+                        vals = tensor3d[itime, :, ifeature]
+                        node.features[feature] += vals
+                        node.nleaf = 1
+                        parentid = node.parent
+                        while parentid != -1:
+                            parent = self.nodes[parentid]
+                            parent.features[feature] += vals
+                            parent.nleaf += 1
+                            parentid = parent.parent
                 
-        self.stocked_until=self.times[-1]
+        self.stocked_until = self.times[-1]
         
-    def walk(self,tnow,thetacrit):
+    def walk(self, tnow, thetacrit):
         
-        '''
-	    walk
-	   
-	    This function generates the list of nodes any given node will import data from, 
-	    when one lags variables using the tree, as well as weights based on the times
-	    between nodes' midpoints.
-	    
-	    The arguments are 
-	    
-	    - thetacrit: angle used to decide if a candidate node should be added to a target 
-	      node's interaction list, based on the size of the candidate node and
-	      the time gap between the candidate node and the target node 
-	   
-	    '''
+        """
+        walk
+
+        This function generates the list of nodes any given node will import data from,
+        when one lags variables using the tree, as well as weights based on the times
+        between nodes' midpoints.
+
+        The arguments are
+
+        - thetacrit: angle used to decide if a candidate node should be added to a target
+          node's interaction list, based on the size of the candidate node and
+          the time gap between the candidate node and the target node
+
+        """
         
-        if ((tnow<self.nodes[0].start) or (tnow>self.nodes[0].end)):
+        if (tnow<self.nodes[0].start) or (tnow>self.nodes[0].end):
             print('tnow not in range of times covered by this tree - aborting')
-            raise(Exception)
-        if (tnow>self.stocked_until):
+            raise Exception
+        if tnow > self.stocked_until:
             print('tree has not been stocked as far as tnow - aborting')
-            raise(Exception)
+            raise Exception
             
         list_of_nodes=[]
 
         for node in self.nodes:
-            if (node.isleaf and node.start==tnow):
+            if node.isleaf and (node.start == tnow):
                 list_of_nodes.append(node.nodeid)
-                if node.predecessor==-1:return list_of_nodes
-                notdone=True
+                if node.predecessor == -1:
+                    return list_of_nodes
+                notdone = True
                 while notdone:
                     if node.ispast:
-                        if (node.predecessor==-1):
-                            notdone=False
+                        if node.predecessor == -1:
+                            notdone = False
                         else:
-                            pred=self.nodes[node.predecessor]
-                            node=self.nodes[pred.parent]
-                            self.split_node(node,list_of_nodes,tnow,thetacrit)
+                            pred = self.nodes[node.predecessor]
+                            node = self.nodes[pred.parent]
+                            self.split_node(node, list_of_nodes, tnow, thetacrit)
 
                     else:
-                        node=self.nodes[node.sibling]
-                        self.split_node(node,list_of_nodes,tnow,thetacrit)
-                        node=self.nodes[node.parent]
-                        if node.predecessor==-1:
-                            notdone=False
+                        node = self.nodes[node.sibling]
+                        self.split_node(node, list_of_nodes, tnow, thetacrit)
+                        node = self.nodes[node.parent]
+                        if node.predecessor == -1:
+                            notdone = False
                         else:
-                            if node.sibling!=node.predecessor:
-                                node=self.nodes[node.predecessor]
-                                self.split_node(node,list_of_nodes,tnow,thetacrit)
+                            if node.sibling != node.predecessor:
+                                node = self.nodes[node.predecessor]
+                                self.split_node(node, list_of_nodes, tnow, thetacrit)
                 
         return list_of_nodes
     
-    def split_node(self,node,list_of_nodes,tnow,thetacrit):
+    def split_node(self, node, list_of_nodes, tnow, thetacrit):
     
-        '''
-	    split_node
-	   
-	    Function which decides whether or not to split a given node into its children,
-	    based on the critical angle and the current time
-	    '''
-    
-        nodestocheck=[]
-        nodestocheck.append(node)
-        while len(nodestocheck)>0:
-            node=nodestocheck.pop(0)
-            mid=(node.start+node.end)/2.
-            width=(node.end-node.start)
-            age=tnow-mid
-            theta=width/age
+        """
+        split_node
 
-            if theta<thetacrit:
+        Function which decides whether or not to split a given node into its children,
+        based on the critical angle and the current time
+        """
+
+        nodestocheck = []
+        nodestocheck.append(node)
+        while len(nodestocheck) > 0:
+            node = nodestocheck.pop(0)
+            mid = (node.start+node.end)/2.
+            width = (node.end-node.start)
+            age = tnow-mid
+            theta = width/age
+
+            if theta < thetacrit:
                 list_of_nodes.append(node.nodeid)
             else:
-                if len(node.children)>0:
+                if len(node.children) > 0:
                     nodestocheck.append(self.nodes[node.children[0]])
                     nodestocheck.append(self.nodes[node.children[1]])
                 else:
                     list_of_nodes.append(node.nodeid)
 
     def make_weight_functions(self):
-        self.weight_functions['uniform']=self._uniform
-        self.weight_functions['oneovert']=self._oneovert
-        self.weight_functions['sigmoid']=self._sigmoid
-        self.weight_functions['expon']=self._expon
-        self.weight_functions['ramp']=self._ramp
+        self.weight_functions['uniform'] = self._uniform
+        self.weight_functions['oneovert'] = self._oneovert
+        self.weight_functions['sigmoid'] = self._sigmoid
+        self.weight_functions['expon'] = self._expon
+        self.weight_functions['ramp'] = self._ramp
                     
-    def _uniform(self,node_list,tnow,sigma=1):
-        weights=np.ones(len(node_list))
+    def _uniform(self, node_list, tnow, sigma=1):
+        weights = np.ones(len(node_list))
         return weights
 
-    def _oneovert(self,node_list,tnow,sigma=1):
-        weights=np.zeros(len(node_list))
+    def _oneovert(self, node_list, tnow, sigma=1):
+        weights = np.zeros(len(node_list))
         for i in range(len(node_list)):
-            mid=(self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
-            lag=tnow-mid+1.5
-            weights[i]=1./lag
+            mid = (self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
+            lag = tnow-mid+1.5
+            weights[i] = 1./lag
         return weights
     
-    def _sigmoid(self,node_list,tnow,sigma=1):
-        weights=np.zeros(len(node_list))
-        offset=5.
-        sigma/=offset
+    def _sigmoid(self, node_list, tnow, sigma=1):
+        weights = np.zeros(len(node_list))
+        offset = 5.
+        sigma /= offset
         for i in range(len(node_list)):
-            mid=self.nodes[node_list[i]].start
-            lag=(mid-tnow+offset*sigma)/sigma
-            weights[i]=1./(1+np.exp(-lag))
+            mid = self.nodes[node_list[i]].start
+            lag = (mid-tnow+offset*sigma)/sigma
+            weights[i] = 1./(1+np.exp(-lag))
 
         return weights
     
-    def _expon(self,node_list,tnow,sigma=1):
-        weights=np.zeros(len(node_list))
+    def _expon(self, node_list, tnow, sigma=1):
+        weights = np.zeros(len(node_list))
         for i in range(len(node_list)):
-            mid=(self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
-            lag=tnow-mid
-            lag1=tnow-self.nodes[node_list[i]].start
+            mid = (self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
+            lag = tnow-mid
+            lag1 = tnow-self.nodes[node_list[i]].start
             
-            lag2=tnow-self.nodes[node_list[i]].end
+            lag2 = tnow-self.nodes[node_list[i]].end
             
-            w=np.exp(-lag/sigma)
-            w1=np.exp(-lag1/sigma)
-            w2=np.exp(-lag2/sigma)
-            weights[i]=(8*w1+6*w-w2)/13.
+            w = np.exp(-lag/sigma)
+            w1 = np.exp(-lag1/sigma)
+            w2 = np.exp(-lag2/sigma)
+            weights[i] = (8*w1+6*w-w2)/13.
 
         return weights
     
-    def _ramp(self,node_list,tnow,sigma=1):
-        weights=np.zeros(len(node_list))
+    def _ramp(self, node_list, tnow, sigma=1):
+        weights = np.zeros(len(node_list))
         for i in range(len(node_list)):
-            mid=(self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
-            lag=tnow-mid+0.5
-            weights[i]=1.-(lag)/(sigma)
+            mid = (self.nodes[node_list[i]].start+self.nodes[node_list[i]].end)/2.
+            lag = tnow-mid+0.5
+            weights[i] = 1.-(lag/sigma)
 
-        weights[weights<0.0]=0.0
+        weights[weights < 0.0] = 0.0
         return weights
     
-    def tree_lag(self,df,thetacrit,weight_functions,sigma):
+    def tree_lag(self, df, thetacrit, weight_functions, sigma):
     
-        '''
+        """
         tree_lag
         
         This function computes features temporally lagged using the tree for every pgid.
@@ -405,38 +419,38 @@ class TemporalTree():
         
         The lagged features are then packed into a dataframe.
         
-        '''
+        """
     
-        ntimes=len(self.times)
-        npgids=len(self.pgids)
-        nfeatures=len(self.features)
-        nfunctions=len(weight_functions)
+        ntimes = len(self.times)
+        npgids = len(self.pgids)
+        nfeatures = len(self.features)
+        nfunctions = len(weight_functions)
     
-        tensor3d=np.empty((ntimes,npgids,nfeatures*nfunctions))
+        tensor3d = np.empty((ntimes, npgids, nfeatures*nfunctions))
     
         for time in self.times:
-            itime=self.time_to_index[time]
-            list_of_nodes=self.walk(time,thetacrit)
-            for ifunction,weight_function in enumerate(weight_functions):
-                weights=self.weight_functions[weight_function](list_of_nodes,time,sigma)
-                for ifeature,feature in enumerate(self.features):
-                    weighted_feature=np.zeros_like(self.nodes[0].features[feature])
-                    for nodeid,weight in zip(list_of_nodes,weights):
-                        weighted_feature+=weight*self.nodes[nodeid].features[feature]
+            itime = self.time_to_index[time]
+            list_of_nodes = self.walk(time, thetacrit)
+            for ifunction, weight_function in enumerate(weight_functions):
+                weights = self.weight_functions[weight_function](list_of_nodes, time, sigma)
+                for ifeature, feature in enumerate(self.features):
+                    weighted_feature = np.zeros_like(self.nodes[0].features[feature])
+                    for nodeid, weight in zip(list_of_nodes, weights):
+                        weighted_feature += weight*self.nodes[nodeid].features[feature]
         
-                    tensor3d[itime,:,ifeature*nfunctions+ifunction]=weighted_feature
+                    tensor3d[itime, :, ifeature*nfunctions+ifunction] = weighted_feature
                     
         flat=np.empty((ntimes*npgids,nfeatures*nfunctions))
     
         for ichunk in range(ntimes):
-            flat[ichunk*npgids:(ichunk+1)*npgids,:]=tensor3d[ichunk,:,:]
-       
-        df_column_names=['tree_tlag_'+function+'_'+feature for feature in self.features for function in weight_functions]
+            flat[ichunk*npgids:(ichunk+1)*npgids, :] = tensor3d[ichunk, :, :]
+
+        df_column_names = df.columns
+
+        index_names = df.index.names
         
-        index_names=df.index.names
-        
-        df_index=pd.MultiIndex.from_product([self.times, self.pgids],names=index_names)    
+        df_index = pd.MultiIndex.from_product([self.times, self.pgids], names=index_names)
     
-        df_treelags=pd.DataFrame(flat, index=df_index, columns=df_column_names)
+        df_treelags = pd.DataFrame(flat, index=df_index, columns=df_column_names)
     
-        return df_treelags    
+        return df_treelags

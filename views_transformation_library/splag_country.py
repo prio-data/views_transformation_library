@@ -108,7 +108,6 @@ def get_country_neighbours(
         neighb_tensor_data,
     )
 
-
     if nouter < 0:
         outer_neighbs=[]
         nouter=0
@@ -206,6 +205,7 @@ def splag_cm(df, kernel_inner, kernel_width, kernel_power, norm_kernel):
 
     data_month_ids = df_tensor.coords["time"].values
     data_country_ids = df_tensor.coords["unit"].values
+    data_feature_ids = df_tensor.coords["feature"].values
 
     # build dicts to transform between month and index and country and index in the
     # data, and in the neighbours tensor
@@ -275,18 +275,24 @@ def splag_cm(df, kernel_inner, kernel_width, kernel_power, norm_kernel):
 
                 neighbs_data_indices = [data_country_to_index[n] for n in neighbs]
 
-                vals = df_tensor[data_month_index, neighbs_data_indices, 0].values
-
                 weights = (
                     distances[data_country_index, neighbs_data_indices] ** kernel_power
-                )
+                    )
 
                 if norm_kernel:
                     weights /= np.sum(weights)
 
-                vals[vals == np.inf] = 0.0
+                for ifeature, feature in enumerate(data_feature_ids):
 
-                splag[data_month_index, data_country_index] = np.sum(vals * weights)
+                    vals = df_tensor[data_month_index, neighbs_data_indices, ifeature].values
+
+                    vals[vals == np.inf] = 0.0
+
+                    splag[data_month_index, data_country_index, ifeature] = np.sum(vals * weights)
+
+#                print('vals',vals)
+#                print('weights',weights)
+#                print('sum',np.sum(vals * weights))
 
     return data_month_to_index, data_country_to_index, splag
 
@@ -314,34 +320,21 @@ def splags_to_df(
 
     countries = np.array(list(idx[1] for idx in df.index.values))
 
-    flat = np.empty((len(countries)))
+    features = df.columns
+
+    flat = np.empty((len(countries), len(features)))
 
     iflat = 0
     for month, country in zip(months, countries):
         imonth = month_to_index[month]
         icountry = country_to_index[country]
 
-        flat[iflat] = splag[imonth, icountry]
+        flat[iflat, :] = splag[imonth, icountry, :]
 
         iflat += 1
 
     df_index = df.index
 
-    feature = df.columns
-
-    df_column_names = [
-        "splag_"
-        + str(kernel_inner)
-        + "_"
-        + str(kernel_outer)
-        + "_"
-        + str(kernel_power)
-        + "_"
-        + str(norm_kernel)
-        + "_"
-        + feature,
-    ]
-
-    df_splag = pd.DataFrame(flat, index=df_index, columns=df_column_names)
+    df_splag = pd.DataFrame(flat, index=df_index, columns=df.columns)
 
     return df_splag

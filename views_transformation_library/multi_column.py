@@ -6,7 +6,7 @@ def add_column(df):
 
     df_left, df_right = get_left_right(df)
 
-    df_sum = pd.DataFrame(index = df_left.index)
+    df_sum = pd.DataFrame(index=df_left.index)
 
     df_sum[df_left.columns[0]] = df_left.values + df_right.values
 

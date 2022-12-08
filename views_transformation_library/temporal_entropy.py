@@ -50,7 +50,7 @@ def get_temporal_entropy(
 
     tensor3d = utilities._df_to_tensor_strides(df)
 
-    tensor3d+=offset
+    tensor3d += offset
 
     sum_over_window = np.zeros_like(tensor3d)
 
@@ -62,10 +62,10 @@ def get_temporal_entropy(
         else:
             istart = itime - window + 1
 
-
         sum_over_window[itime, :, :] = np.sum(tensor3d[istart:itime+1], axis=0)
 
-        entropy[itime,:,:]=-np.sum(tensor3d[istart:itime+1]/sum_over_window[itime, :, :]*np.log2(tensor3d[istart:itime+1]/sum_over_window[itime, :, :]), axis=0)
+        entropy[itime, :, :] = -np.sum(tensor3d[istart:itime+1]/sum_over_window[itime, :, :] *
+                                       np.log2(tensor3d[istart:itime+1]/sum_over_window[itime, :, :]), axis=0)
 #    individual_values = (tensor3d / sum_over_window) * np.log2(tensor3d / sum_over_window)
 
 #    for itime in range(len(times)):
@@ -81,6 +81,7 @@ def get_temporal_entropy(
     df_entropy = entropy_to_df_strides(entropy,times,pgids,features,df_index)
 
     return df_entropy
+
 
 def entropy_to_df_strides(
         entropy,
@@ -102,7 +103,9 @@ def entropy_to_df_strides(
     flat = np.lib.stride_tricks.as_strided(entropy, shape=(dim0 * dim1, dim2),
                                            strides=(offset1, offset2))
 
-    df_column_names = ['entropy_'+ feature for feature in features]
+#    df_column_names = ['entropy_'+ feature for feature in features]
+
+    df_column_names = df.columns
 
     df_entropy = pd.DataFrame(flat, index=df_index, columns=df_column_names)
 
