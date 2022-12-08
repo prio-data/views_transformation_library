@@ -4,8 +4,8 @@ from scipy.spatial import cKDTree
 from views_transformation_library import utilities
 
 
-def get_spacetime_distances(df,return_values='distances',k=1,nu=1.0,power=0.0):
-    '''
+def get_spacetime_distances(df, return_values='distances', k=1, nu=1.0, power=0.0):
+    """
     
     get_spacetime_distances
     
@@ -33,52 +33,53 @@ def get_spacetime_distances(df,return_values='distances',k=1,nu=1.0,power=0.0):
     power:         power to which distance is raised when computing weights. Negative
                    values are automatically converted to positive values.
     
-    '''
+    """
 
-    if return_values not in ['distances','weights']:
-        raise Exception("unknown return_values; ",return_values,
+    if return_values not in ['distances', 'weights']:
+        raise Exception("unknown return_values; ", return_values,
                         " - allowed choices: distances weights")
                         
-    power=np.abs(power)
+    power = np.abs(power)
 
-    times,time_to_index,index_to_time=utilities._map_times(df)
+    times, time_to_index, index_to_time = utilities._map_times(df)
 
-    pgids,pgid_to_longlat,longlat_to_pgid,pgid_to_index,index_to_pgid,ncells,pwr=\
+    pgids, pgid_to_longlat, longlat_to_pgid, pgid_to_index, index_to_pgid, ncells, pwr =\
                                                            utilities._map_pgids_2d(df)
 
-    features=utilities._map_features(df)
+    features = utilities._map_features(df)
 
-    use_stride_tricks=True
+    use_stride_tricks = True
 
-    tensor=utilities._build_4d_tensor(
+    tensor = utilities._build_4d_tensor(
+                                       df,
+                                       pgids,
+                                       pgid_to_index,
+                                       times,
+                                       time_to_index,
+                                       ncells,
+                                       ncells,
+                                       pgid_to_longlat,
+                                       features,
+                                       use_stride_tricks
+                                       )
+
+    df_stdist = space_time_distances(
                                      df,
-                                     pgids,
-                                     pgid_to_index,
+                                     tensor,
                                      times,
+                                     pgids,
+                                     features,
+                                     longlat_to_pgid,
                                      time_to_index,
                                      ncells,
-                                     ncells,
-                                     pgid_to_longlat,
-                                     features,
-                                     use_stride_tricks
+                                     return_values,
+                                     k,
+                                     nu,
+                                     power
                                      )
-
-    df_stdist=space_time_distances(
-                                    df,
-                                    tensor,
-                                    times,
-                                    pgids,
-                                    features,
-                                    longlat_to_pgid,
-                                    time_to_index,
-                                    ncells,
-                                    return_values,
-                                    k,
-                                    nu,
-                                    power
-                                    )
                                     
     return df_stdist
+
 
 def space_time_distances(
                           df,
@@ -95,7 +96,7 @@ def space_time_distances(
                           power
                           ):
                           
-    '''
+    """
     
     space_time_distances
     
@@ -104,102 +105,107 @@ def space_time_distances(
     
     If k>1, averaging is performed.
     
-    '''                      
+    """
 
-    PGID_TO_DEGREES=0.5
+    PGID_TO_DEGREES = 0.5
 
-    final=np.empty((len(times)*len(pgids),len(features)))
+    final = np.empty((len(times)*len(pgids), len(features)))
 
-    npg=len(pgids)
-    pgids_for_index=[]
-
+    npg = len(pgids)
+    pgids_for_index = []
 
     for ilong in range(ncells):
         for ilat in range(ncells):
-            if (ilong,ilat) in longlat_to_pgid.keys():
-                pgid=longlat_to_pgid[(ilong,ilat)]
+            if (ilong, ilat) in longlat_to_pgid.keys():
+                pgid = longlat_to_pgid[(ilong, ilat)]
                 pgids_for_index.append(pgid)
 
-    for time in times[0:600]:
+    for ifeature, feature in enumerate(df.columns):
+
+        tensor3d = tensor[:, :, :, ifeature]
+
+        for time in times[0:600]:
     
-        tindex=time_to_index[time]
-        ipgid=0
+            tindex = time_to_index[time]
+            ipgid = 0
 
-        points=np.array(np.where(tensor[:,:,:tindex+1,0]>0)).astype(float).T
-        
+            points = np.array(np.where(tensor3d[:, :, :tindex+1] > 0)).astype(float).T
 
-        if len(points)==0:
-            pass
-        else: 
-            points[:,0]*=PGID_TO_DEGREES
-            points[:,1]*=PGID_TO_DEGREES
-            points[:,2]*=nu
-            btree = cKDTree(data=points,leafsize=20)
+            if len(points) == 0:
+                pass
+            else:
+                points[:, 0] *= PGID_TO_DEGREES
+                points[:, 1] *= PGID_TO_DEGREES
+                points[:, 2] *= nu
+                btree = cKDTree(data=points, leafsize=20)
                 
-        for ilong in range(ncells):
-            for ilat in range(ncells):
+            for ilong in range(ncells):
+                for ilat in range(ncells):
 
-                try:   
+                    try:
    
-                    pgid=longlat_to_pgid[(ilong,ilat)]
+                        pgid = longlat_to_pgid[(ilong, ilat)]
                   
-                    if len(points)==0:
+                        if len(points) == 0:
 
-                        feature=999.
+                            feature = 999.
  
-                    else:
+                        else:
 
-                        sptime_dists,ipoints=btree.query([ilong*PGID_TO_DEGREES,ilat*PGID_TO_DEGREES,nu*tindex],k)
+                            sptime_dists, ipoints = btree.query([ilong*PGID_TO_DEGREES, ilat*PGID_TO_DEGREES,
+                                                                 nu*tindex], k)
 
-                        if k==1:
-                            ipoints=[ipoints,]
-                            sptime_dists=[sptime_dists,]
+                            if k == 1:
+                                ipoints = [ipoints, ]
+                                sptime_dists = [sptime_dists, ]
                                 
-                        if return_values=='distances':
+                            if return_values == 'distances':
                                 
-                            if k==1:
-                                feature=sptime_dists[0]
-                            else:   
-                                feature=np.mean(sptime_dists)
-                        
-                        elif return_values=='weights':
-
-                            featurei=np.zeros(k)
-                           
-                            for i,ipoint in enumerate(ipoints):
-
-                                coords=points[ipoint]
-                                
-                                ilongp=int(coords[0]/PGID_TO_DEGREES)
-                                ilatp=int(coords[1]/PGID_TO_DEGREES)
-                                itimep=int(coords[2]/nu)
-
-                                if sptime_dists[i]==0.0:
-                                    featurei[i]=tensor[ilongp,ilatp,itimep,0]
+                                if k == 1:
+                                    feature = sptime_dists[0]
                                 else:
-                                    featurei[i]=tensor[ilongp,ilatp,itimep,0]/(sptime_dists[i]**(power))
+                                    feature = np.mean(sptime_dists)
                         
-                            feature=np.mean(featurei)
+                            elif return_values == 'weights':
+
+                                featurei = np.zeros(k)
+                           
+                                for i, ipoint in enumerate(ipoints):
+
+                                    coords = points[ipoint]
+                                
+                                    ilongp = int(coords[0]/PGID_TO_DEGREES)
+                                    ilatp = int(coords[1]/PGID_TO_DEGREES)
+                                    itimep = int(coords[2]/nu)
+
+                                    if sptime_dists[i] == 0.0:
+                                        featurei[i] = tensor[ilongp, ilatp, itimep, 0]
+                                    else:
+                                        featurei[i] = tensor[ilongp, ilatp, itimep, 0]/(sptime_dists[i]**power)
+                        
+                                feature = np.mean(featurei)
                 
-                    indx=tindex*npg+ipgid
+                        indx = tindex*npg+ipgid
                     
-                    final[indx,0]=feature
+                        final[indx, ifeature] = feature
 
-                    ipgid+=1
-                except:
-                    pass
+                        ipgid += 1
+                    except:
+                        pass
 
-    index_names=df.index.names
+    index_names = df.index.names
         
-    df_index=pd.MultiIndex.from_product([times, pgids_for_index],names=index_names) 
+    df_index = pd.MultiIndex.from_product([times, pgids_for_index], names=index_names)
     
-    if return_values=='distances':
-        colnames=['st_distances_nu_'+str(nu)+'_'+feature for feature in features]
-    else:
-        colnames=['st_weights_nu_'+str(nu)+'_k_'+str(k)+'_pwr_'+str(power)+'_'+feature for feature in features]
-       
-    df_stdist=pd.DataFrame(data=final,columns=colnames,index=df_index)
+#    if return_values=='distances':
+#        colnames=['st_distances_nu_'+str(nu)+'_'+feature for feature in features]
+#    else:
+#        colnames=['st_weights_nu_'+str(nu)+'_k_'+str(k)+'_pwr_'+str(power)+'_'+feature for feature in features]
 
-    df_stdist=df_stdist.sort_index()
+    colnames = df.columns
+
+    df_stdist = pd.DataFrame(data=final, columns=colnames, index=df_index)
+
+    df_stdist = df_stdist.sort_index()
 
     return df_stdist
