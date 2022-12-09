@@ -66,24 +66,14 @@ def get_temporal_entropy(
 
         entropy[itime, :, :] = -np.sum(tensor3d[istart:itime+1]/sum_over_window[itime, :, :] *
                                        np.log2(tensor3d[istart:itime+1]/sum_over_window[itime, :, :]), axis=0)
-#    individual_values = (tensor3d / sum_over_window) * np.log2(tensor3d / sum_over_window)
 
-#    for itime in range(len(times)):
-#        if itime < window -1 :
-#            istart = 0
-#        else:
-#            istart = itime - window + 1
-
-
-#        print(individual_values[istart:itime+1])
-#        entropy[itime, :, :] = -np.sum(individual_values[istart:itime+1], axis=0)
-
-    df_entropy = entropy_to_df_strides(entropy,times,pgids,features,df_index)
+    df_entropy = entropy_to_df_strides(df, entropy, times, pgids, features, df_index)
 
     return df_entropy
 
 
 def entropy_to_df_strides(
+        df,
         entropy,
         times,
         pgids,
