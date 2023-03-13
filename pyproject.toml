@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "views-transformation-library"
 
-version = "2.6.1"
+version = "2.7.0"
 description = "A package containing data transformation functions used by the ViEWS team"
 homepage = "https://www.github.com/prio-data/views_transformation_library"
 readme = "README.md"
@@ -15,7 +15,7 @@ authors = [
 license = "CC-BY-NC"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.10"
+python = ">=3.8"
 pandas = "^1.2.3"
 scipy = "^1.6.2"
 xarray = ">=0.19.0"
