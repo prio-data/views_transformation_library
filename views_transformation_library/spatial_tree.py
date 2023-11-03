@@ -27,7 +27,7 @@ def get_tree_lag(df, thetacrit, dfunction_option):
     """
 
     df = df.fillna(0.0)
-    if not df.index.is_monotonic:
+    if not df.index.is_monotonic_increasing:
         df = df.sort_index()
 
     dfunctions = get_dfunctions(dfunction_option)
