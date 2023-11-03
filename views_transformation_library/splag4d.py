@@ -49,7 +49,7 @@ def get_splag4d(
     arg_string = str(kernel_inner) + '_' + str(kernel_width) + '_' + str(kernel_power) + '_' + str(norm_kernel)
 
     df = df.fillna(0.0)
-    if not df.index.is_monotonic:
+    if not df.index.is_monotonic_increasing:
         df = df.sort_index()
  
     weights = build_kernel_weights(kernel_inner, kernel_width, kernel_power, norm_kernel)

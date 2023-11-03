@@ -37,7 +37,7 @@ def get_temporal_entropy(
 
     """
     df = df.fillna(0.0)
-    if not df.index.is_monotonic:
+    if not df.index.is_monotonic_increasing:
         df = df.sort_index()
 
     df_index = df.index
