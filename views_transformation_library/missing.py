@@ -16,6 +16,15 @@ from sklearn.impute import IterativeImputer  # type: ignore
 from sklearn.linear_model import BayesianRidge  # type: ignore
 
 def replace_na(df: pd.DataFrame, replacement = 0):
+    """
+    replace_na
+
+    Replaces NaNs in the input dataframe with the specified value (which defaults to zero)
+
+    Arguments:
+        value: quantity which will replace Nan (defaults to zero)
+
+    """
     return df.replace(np.nan,replacement)
 
 def list_totally_missing(df: pd.DataFrame) -> List[str]:
@@ -27,7 +36,6 @@ def list_totally_missing(df: pd.DataFrame) -> List[str]:
             cols.append(col)
 
     return cols
-
 
 
 def fill_groups_with_time_means(df: pd.DataFrame) -> pd.DataFrame:
@@ -47,7 +55,6 @@ def fill_groups_with_time_means(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-
 def fill_with_group_and_global_means(df: pd.DataFrame) -> pd.DataFrame:
     """ Impute missing values to group-level or global means. """
 
@@ -62,13 +69,24 @@ def fill_with_group_and_global_means(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-
 def extrapolate(
     df: pd.DataFrame,
     limit_direction: str = "both",
     limit_area: Optional[str] = None,
 ) -> pd.DataFrame:
-    """ Interpolate and extrapolate """
+    """
+    extrapolate
+
+    Perform linear interpolation and/or extrapolation over NaNs by spatial unit
+
+    Arguments:
+        limit_direction: 'forward', 'backward', 'both': consecutive NaNs will be filled in this direction
+        limit_area: None, 'inside', 'outside': if 'inside', NaNs will only be filled if bracketed by valid values (i.e.
+        interpolation) . If 'outside', NaNs are only filled outside valid values (i.e. extrapolation). If None, both
+        interpolation and extrapolation are performed
+
+    """
+
     return (
         df.sort_index()
         .groupby(level=1)
@@ -115,12 +133,18 @@ def fill(
     limit_direction: Literal["forward", "backward", "both"] = "both",
     limit_area: Optional[Literal["inside", "outside"]] = None,
 ) -> pd.Series:
-    """ Fill column in dataframe with optional direction and area.
+    """
+    fill
+
+    Perform forward and/or backward filling by spatial unit
 
     Args:
-        s: Pandas series to apply filling to.
-        limit_direction: Direction in which to fill.
-        limit_area: Area to fill. Default None refers to the entire series.
+        limit_direction: 'forward', 'backward', 'both': Direction in which to fill. 'forward' propagates most recent
+        valid value forward. 'backward' propagates oldest valid value backwards. 'both' performs a forward propagation,
+        followed by a backward propagation
+        limit_area: None, 'inside', 'outside': if 'inside', NaNs will only be filled if bracketed by valid values.
+        If 'outside', NaNs are only filled outside valid values. If None, no restrictions are applied.
+
     """
 
     
