@@ -5,134 +5,25 @@ more advanced extrapolations.
 
 """
 
-from typing import Any, List, Optional, Literal
-import multiprocessing as mp
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+import warnings
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-
-from sklearn.experimental import enable_iterative_imputer  # type: ignore # noqa: F401, E501 # pylint: disable=unused-import
-from sklearn.impute import IterativeImputer  # type: ignore
-from sklearn.linear_model import BayesianRidge  # type: ignore
-
-def replace_na(df: pd.DataFrame, replacement = 0):
+def replace_na(tensor, replacement = 0.):
     """
     replace_na
 
-    Replaces NaNs in the input dataframe with the specified value (which defaults to zero)
+    Replaces NaNs in the input with the specified value (which defaults to zero)
 
     Arguments:
-        value: quantity which will replace Nan (defaults to zero)
-
-    """
-    return df.replace(np.nan,replacement)
-
-def list_totally_missing(df: pd.DataFrame) -> List[str]:
-    """ Get a list of columns for which all values are missing """
-
-    cols = []
-    for col in df:
-        if df[col].isnull().mean() == 1.0:
-            cols.append(col)
-
-    return cols
-
-
-def fill_groups_with_time_means(df: pd.DataFrame) -> pd.DataFrame:
-    """ Fill completely missing groups with time means """
-
-    # Only fill numeric cols
-    cols = list(df.select_dtypes(include=[np.number]).columns.values)
-    for _, g_df in df.groupby(level=1):
-        # If missing everything from a group
-        if g_df.isnull().all().all():
-            # Get the times for this group
-            times_group = g_df.index.get_level_values(0)
-            # Fill all columns with the time mean
-            df.loc[g_df.index, cols] = (
-                df.loc[times_group, cols].groupby(level=0).mean().values
-            )
-    return df
-
-
-def fill_with_group_and_global_means(df: pd.DataFrame) -> pd.DataFrame:
-    """ Impute missing values to group-level or global means. """
-
-    for col in df.columns:
-        # impute with group level mean
-        df[col].fillna(
-            df.groupby(level=1)[col].transform("mean"), inplace=True
-        )
-        # fill remaining NaN with df level mean
-        df[col].fillna(df[col].mean(), inplace=True)
-
-    return df
-
-
-def extrapolate(
-    df: pd.DataFrame,
-    limit_direction: str = "both",
-    limit_area: Optional[str] = None,
-) -> pd.DataFrame:
-    """
-    extrapolate
-
-    Perform linear interpolation and/or extrapolation over NaNs by spatial unit
-
-    Arguments:
-        limit_direction: 'forward', 'backward', 'both': consecutive NaNs will be filled in this direction
-        limit_area: None, 'inside', 'outside': if 'inside', NaNs will only be filled if bracketed by valid values (i.e.
-        interpolation) . If 'outside', NaNs are only filled outside valid values (i.e. extrapolation). If None, both
-        interpolation and extrapolation are performed
+        replacement: quantity which will replace Nan (defaults to zero)
 
     """
 
-    return (
-        df.sort_index()
-        .groupby(level=1)
-        .apply(
-            lambda group: group.interpolate(
-                limit_direction=limit_direction, limit_area=limit_area
-            )
-        )
-    )
-
-def _fill_by_group(
-    group: Any,
-    limit_direction: Literal["forward", "backward", "both"],
-    limit_area: Optional[Literal["inside", "outside"]],
-) -> Any:
-    # Get the outer boundaries of the group data.
-    first_id = group.first_valid_index()
-    last_id = group.last_valid_index()
-    # Fill group according to set params.
-    if limit_area is not None:
-        # Assume forward if default "both" is passed with area "inside".
-        if limit_area == "inside" and limit_direction != "backward":
-            group[first_id:last_id] = group[first_id:last_id].ffill()
-        if limit_area == "inside" and limit_direction == "backward":
-            group[first_id:last_id] = group[first_id:last_id].bfill()
-        if limit_area == "outside":
-
-            id_min, id_max = group.index.min(), group.index.max()
-            group[id_min:first_id] = group[id_min:first_id].bfill()
-            group[last_id:id_max] = group[last_id:id_max].ffill()
-    elif limit_direction == "forward":
-        group = group.ffill()
-    elif limit_direction == "backward":
-        group = group.bfill()
-    else:
-        group = group.ffill().bfill()
-
-    return group
+    return np.where(np.isnan(tensor),replacement,tensor)
 
 
-
-def fill(
-    s: pd.Series,
-    limit_direction: Literal["forward", "backward", "both"] = "both",
-    limit_area: Optional[Literal["inside", "outside"]] = None,
-) -> pd.Series:
+def fill(tensor, limit_direction='both', limit_area=None):
     """
     fill
 
@@ -146,85 +37,121 @@ def fill(
         If 'outside', NaNs are only filled outside valid values. If None, no restrictions are applied.
 
     """
+    def mask_outside_forward(tensor):
+        mask = np.isnan(tensor)
+        shape1 = tensor.shape[1]
 
-    
-    return (
-        s.sort_index()
-        .groupby(level=1)
-        .apply(
-            lambda group: _fill_by_group(
-                group=group,
-                limit_direction=limit_direction,
-                limit_area=limit_area,
-            ),
-        )
-    )
+        mask_min = shape1 - 1 - np.flip(mask, axis=1).argmin(axis=1)
+
+        mask_indices = np.tile(mask_min, (shape1, 1)).T - np.indices(mask.shape)[1]
+        nan_mask = np.where(mask_indices < 0, np.nan, 0)
+        mask = np.isnan(nan_mask)
+
+        return mask
+
+    def outside_forward(tensor):
+        tensor = tensor.T
+        shape1 = tensor.shape[1]
+
+        mask = mask_outside_forward(tensor)
+
+        idx = np.where(~mask, np.arange(shape1), 0)
+        np.maximum.accumulate(idx, axis=1, out=idx)
+        tensor = tensor[np.arange(idx.shape[0])[:, None], idx]
+
+        return tensor.T
+
+    def outside_backward(tensor):
+        tensor = tensor.T
+        tensor = np.flip(tensor,axis=1)
+        shape1 = tensor.shape[1]
+
+        mask = mask_outside_forward(tensor)
+
+        idx = np.where(~mask, np.arange(shape1), 0)
+        np.maximum.accumulate(idx, axis=1, out=idx)
+        tensor = tensor[np.arange(idx.shape[0])[:, None], idx]
+
+        tensor = np.flip(tensor,axis=1)
+
+        return tensor.T
+
+    def outside_both(tensor):
+        return outside_backward(outside_forward(tensor))
+
+    def inside_forward(tensor):
+        tensor = tensor.T
+        shape1 = tensor.shape[1]
+
+        mask = np.isnan(tensor)
+
+        outside_forward_mask = mask_outside_forward(tensor)
+        outside_backward_mask = np.flip(mask_outside_forward(np.flip(tensor)))
+
+        outside_mask = np.logical_or(outside_forward_mask, outside_backward_mask)
+
+        mask = np.logical_xor(mask,outside_mask)
+
+        idx = np.where(~mask, np.arange(shape1), 0)
+        np.maximum.accumulate(idx, axis=1, out=idx)
+        tensor = tensor[np.arange(idx.shape[0])[:, None], idx]
+
+        return tensor.T
+
+    def inside_backward(tensor):
+        tensor = tensor.T
+        tensor = np.flip(tensor,axis=1)
+        shape1 = tensor.shape[1]
+
+        outside_forward_mask = mask_outside_forward(tensor)
+        outside_backward_mask = np.flip(mask_outside_forward(np.flip(tensor)))
+
+        mask = np.logical_or(outside_forward_mask, outside_backward_mask)
+
+        idx = np.where(~mask, np.arange(shape1), 0)
+        np.maximum.accumulate(idx, axis=1, out=idx)
+        tensor = tensor[np.arange(idx.shape[0])[:, None], idx]
+
+        tensor = np.flip(tensor,axis=1)
+
+        return tensor.T
+
+    def both_both(tensor):
+        return inside_forward(outside_both(tensor))
+
+    def both_forward(tensor):
+        return inside_forward(outside_forward(tensor))
+
+    def both_backward(tensor):
+        return inside_forward(outside_backward(tensor))
 
 
+    def select_filler(limit_direction, limit_area):
+        match (limit_direction, limit_area):
+            case ('both', None):
+                return both_both
+            case ('both', 'inside'):
+                return inside_forward
+            case ('both', 'outside'):
+                return outside_both
+            case ('forward', None):
+                return both_forward
+            case ('forward', 'inside'):
+                return inside_forward
+            case ('forward', 'outside'):
+                return outside_forward
+            case ('backward', None):
+                return both_backward
+            case ('backward', 'inside'):
+                return inside_backward
+            case ('backward', 'outside'):
+                return outside_backward
+            case _:
+                raise RuntimeError(f'Unrecognised limit dir/area: {limit_direction, limit_area}')
 
-def _fill_iterative(
-    df: pd.DataFrame,
-    seed: int = 1,
-    max_iter: int = 10,
-    estimator: Any = BayesianRidge(),
-):
-    """ Gets a single imputation using IterativeImputer from sklearn.
+    filler=select_filler(limit_direction, limit_area)
 
-    Uses BayesianRidge() from sklearn.
+    for ifeature in range(tensor.shape[2]):
+        tensor[:,:,ifeature] = filler(tensor[:,:,ifeature])
 
-    Changed default of sample_posterior to True as we're doing
-    multiple imputation.
-
-    Clips imputed values to min-max of observed values to avoid
-    brokenly large values. When imputation model doesn't converge
-    nicely we otherwise end up with extreme values that are out of
-    range of the float32 type used by model training, causing crashes.
-    Consider this clipping a workaround until a more robust imputation
-    strategy is in place.
-
-    """
-    # Only impute numberic cols
-    cols_numeric = list(df.select_dtypes(include=[np.number]).columns.values)
-    cols_not_numeric = [col for col in df.columns if col not in cols_numeric]
-
-    # Get bounds so we can clip imputed values to not be outside
-    # observed values
-    observed_min = df[cols_numeric].min()
-    observed_max = df[cols_numeric].max()
-
-    df_imputed = df.loc[:, []].copy()
-    for col in df:
-        df_imputed[col] = np.nan
-
-    df_imputed[cols_numeric] = IterativeImputer(
-        random_state=seed, max_iter=max_iter, estimator=estimator
-    ).fit_transform(df[cols_numeric])
-    df_imputed[cols_not_numeric] = df[cols_not_numeric]
-
-    # Clip imputed values to observed min-max range
-    df_imputed[cols_numeric] = df_imputed[cols_numeric].clip(
-        observed_min, observed_max, axis=1
-    )
-
-    return df_imputed
-
-
-def impute_mice_generator(
-    df, n_imp, estimator=None, parallel=False, n_jobs=mp.cpu_count()
-):
-    """ Impute df with MICE """
-
-    if parallel:
-        with mp.Pool(processes=n_jobs, maxtasksperchild=1) as pool:
-            results = [
-                pool.apply_async(_fill_iterative, (df, imp, 10, estimator,))
-                for imp in range(n_imp)
-            ]
-            for result in results:
-                yield result.get()
-
-    else:
-
-        for imp in range(n_imp):
-
-            yield _fill_iterative(df, seed=imp, estimator=estimator)
+    return tensor

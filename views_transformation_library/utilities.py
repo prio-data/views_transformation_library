@@ -4,16 +4,15 @@ import ingester3
 from ingester3.Country import Country
 from ingester3.scratch import fetch_data
 
-def _df_to_tensor_no_strides(df):
-    '''
+def df_to_tensor_no_strides(df):
+    """
     df_to_tensor_no_strides created 13/03/2021 by Jim Dale
     Uses regular array indexing to create a tensorlike from a dataframe.
 
     dim0 of the tensor corresponds to level 0 of the df multiindex,
     dim1 corresponds to level 1 of the df multiindex, and dim2 corresponds to
     the df's columns.
-    '''
-
+    """
 
     # get shape of dataframe
 
@@ -37,8 +36,8 @@ def _df_to_tensor_no_strides(df):
 
     return tensor3d 
 
-def _df_to_tensor_strides(df):
-    '''
+def df_to_tensor_strides(df):
+    """
     df_to_tensor created 13/03/2021 by Jim Dale
     Uses as_strided from numpy stride_tricks library to create a tensorlike
     from a dataframe.
@@ -46,7 +45,7 @@ def _df_to_tensor_strides(df):
     dim0 of the tensor corresponds to level 0 of the df multiindex,
     dim1 corresponds to level 1 of the df multiindex, and dim2 corresponds to
     the df's columns.
-    '''
+    """
 
     # get shape of dataframe
 
@@ -80,7 +79,7 @@ def _df_to_tensor_strides(df):
     
 
 def _map_times(df):
-    '''
+    """
     
     map_times
     
@@ -88,7 +87,7 @@ def _map_times(df):
     a list of unique times, and dicts which convert between the actual time, and the
     index in the list.
 
-    '''
+    """
     # get unique times
 
     times=np.array(list({idx[0] for idx in df.index.values}))
@@ -105,20 +104,20 @@ def _map_times(df):
     return times,time_to_index,index_to_time
     
 def _map_features(df):
-    '''
+    """
     
     map_features
     
     Gets a list of features from a dataframe.
 
-    '''
+    """
 
     features=list(df.columns)
     
     return features
     
 def _map_pgids_1d(df):
-    '''
+    """
     
     map_pgid_1d
     
@@ -126,7 +125,7 @@ def _map_pgids_1d(df):
     returns a 1d list of unique pgids, together with dicts which convert between 
     the actual pgid and the index in the list.
     
-    '''
+    """
     
     pgids=np.array(list({idx[1] for idx in df.index.values}))
 
@@ -143,7 +142,7 @@ def _map_pgids_1d(df):
     
     
 def _map_pgids_2d(df):
-    '''
+    """
 	map_pgids_2d
 	
 	This function builds a 2D map in longitude-latitude from the pgids contained in
@@ -153,16 +152,16 @@ def _map_pgids_2d(df):
 	The pgids are embedded and centred in the smallest possible square grid whose side
 	is an integer power of 2
 
-	'''
+	"""
 	
     PG_STRIDE=720
-	
-	# get unique pgids
+
+    # get unique pgids
 	
     pgids=np.array(list({idx[1] for idx in df.index.values}))
     pgids=np.sort(pgids)
 		
-	# convert pgids to longitudes and latitudes
+    # convert pgids to longitudes and latitudes
 	
     longitudes=pgids%PG_STRIDE
     latitudes=pgids//PG_STRIDE
@@ -175,7 +174,7 @@ def _map_pgids_2d(df):
     latrange=latmax-latmin
     longrange=longmax-longmin
 
-	# shift to a set of indices that starts at [0,0]
+    # shift to a set of indices that starts at [0,0]
 
     latitudes-=latmin
     longitudes-=longmin
@@ -200,7 +199,7 @@ def _map_pgids_2d(df):
     longitudes+=inudgelong
     latitudes+=inudgelat
 
-	# make dicts to transform between pgids and (long,lat) coordinate
+    # make dicts to transform between pgids and (long,lat) coordinate
 
     pgid_to_longlat={}
     longlat_to_pgid={}
@@ -227,7 +226,7 @@ def _build_4d_tensor(
     features,
     use_stride_tricks
 ):
-    '''
+    """
     
     build_4d_tensor
     
@@ -236,7 +235,7 @@ def _build_4d_tensor(
     time x feature tensor.
 
     
-    '''
+    """
     
     # convert flat data from df into time x pgid x feature tensor
     
@@ -263,7 +262,7 @@ def _build_4d_tensor(
     
 def _df_to_datacube(df,use_stride_tricks):
 
-    '''
+    """
 
     df_to_datacube
     
@@ -271,7 +270,7 @@ def _df_to_datacube(df,use_stride_tricks):
     tensor build, so that a df is accepted and a 4d tensor is produced to enable quick
     plotting.
 
-    '''
+    """
 
     pgids,pgid_to_longlat,longlat_to_pgid,pgid_to_index,index_to_pgid,ncells,power=_map_pgids_2d(df)
 
@@ -295,7 +294,7 @@ def _df_to_datacube(df,use_stride_tricks):
     
 def _get_country_neighbours_tensor():
 
-    '''
+    """
     
     get_country_neighbours_tensor
     
@@ -306,7 +305,7 @@ def _get_country_neighbours_tensor():
     Note that (month_i, country_a, country_a)=0, and that countries which never have any 
     neighbours do not appear in the tensor.
     
-    '''
+    """
 
     columns = ['month_id', 'a_id', 'b_id']
 
@@ -367,14 +366,14 @@ def _get_country_neighbours_tensor():
         
 def _get_country_distances(country_ids,country_id_to_index):
 
-    '''
+    """
     
     get_distances
     
     Fetched distances between countries using the Country class and stores them in a
     country x country tensor.
     
-    '''
+    """
     
     ncountries=len(country_ids)
     
