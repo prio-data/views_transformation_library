@@ -5,10 +5,12 @@
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
+from scipy import ndimage
 from views_transformation_library import utilities
+from utilities import dne_wrapper
 
-
-def sptdist(tensor, index, return_values='distances', k=1, nu=1.0, power=0.0, last_month = 0):
+@dne_wrapper
+def sptdist(tensor_container, return_values='distances', k=1, nu=1.0, power=0.0, last_month = -1):
     """
     sptdist
 
@@ -131,17 +133,20 @@ def sptdist(tensor, index, return_values='distances', k=1, nu=1.0, power=0.0, la
 
     power = np.abs(power)
 
-    times, time_to_index, index_to_time = utilities.map_times(index)
+    times, time_to_index, index_to_time = utilities.map_times(tensor_container.index)
 
     pgids, pgid_to_longlat, longlat_to_pgid, pgid_to_index, index_to_pgid, ncells, pwr = \
-        utilities.map_pgids_2d(index)
+        utilities.map_pgids_2d(tensor_container.index)
 
-    tensor = get_space_time_distances(tensor,times,pgids,pgid_to_longlat,time_to_index,return_values,
-        k,nu,power,last_month)
+    if last_month<0: last_month = np.max(times)
 
-    return tensor
+    tensor_container.tensor = get_space_time_distances(tensor_container.tensor,times,pgids,pgid_to_longlat,
+                                                       time_to_index,return_values,k,nu,power,last_month)
 
-def sp_tree(tensor, index, thetacrit, dfunction_option):
+    return tensor_container
+
+@dne_wrapper
+def sp_tree(tensor_container, thetacrit, dfunction_option):
     """
     get_tree_lag
 
@@ -460,7 +465,7 @@ def sp_tree(tensor, index, thetacrit, dfunction_option):
 
             return
 
-        def tree_lag(self):
+        def tree_lag(self,dtype):
 
             """
             tree_lag
@@ -480,7 +485,7 @@ def sp_tree(tensor, index, thetacrit, dfunction_option):
             nweightfunctions = len(self.weightfunctions)
             weightkeys = list((self.weightfunctions.keys()))
 
-            treelags = np.zeros((dim0, dim1, dim2 * nweightfunctions),dtype=tensor.dtype)
+            treelags = np.zeros((dim0, dim1, dim2 * nweightfunctions),dtype=dtype)
 
             for ifeature, feature in enumerate(self.features):
                 for node in self.nodes:
@@ -536,22 +541,29 @@ def sp_tree(tensor, index, thetacrit, dfunction_option):
 
         return dfunctions
 
-    tensor = np.where(np.isnan(tensor),0.0,tensor)
+#    tensor_container.tensor = np.where(np.isnan(tensor_container.tensor),0.0,tensor_container.tensor)
+
+    missing = tensor_container.missing
+
+    tensor_container.tensor = np.where(tensor_container.tensor==missing, 0.0, tensor_container.tensor)
 
     dfunctions = get_dfunctions(dfunction_option)
 
     tree = SpatialTree()
 
-    tree.build_tree(index)
+    tree.build_tree(tensor_container.index)
 
-    tree.stock(tensor,index)
+    tree.stock(tensor_container.tensor,tensor_container.index)
 
     tree.walk(thetacrit, dfunctions)
 
-    return tree.tree_lag()
+    tensor_container.tensor = tree.tree_lag(tensor_container.tensor.dtype)
+
+    return tensor_container
 
 
-def splag4d(tensor,index,kernel_inner=1, kernel_width=1,
+@dne_wrapper
+def splag4d(tensor_container,kernel_inner=1, kernel_width=1,
                 kernel_power=0, norm_kernel=0):
     """
     splag4d created 19/03/2021 by Jim Dale
@@ -641,16 +653,254 @@ def splag4d(tensor,index,kernel_inner=1, kernel_width=1,
 
         return tensor
 
-    tensor = np.where(np.isnan(tensor), 0.0, tensor)
+#    tensor, index = tensor_container.tensor, tensor_container.index
+
+    missing = tensor_container.missing
+
+    tensor_container.tensor = np.where(tensor_container.tensor==missing, 0.0, tensor_container.tensor)
 
     weights = build_kernel_weights(kernel_inner, kernel_width, kernel_power, norm_kernel)
 
-    times, time_to_index, index_to_time = utilities.map_times(index)
+    times, time_to_index, index_to_time = utilities.map_times(tensor_container.index)
 
     pgids, pgid_to_longlat, longlat_to_pgid, pgid_to_index, index_to_pgid, ncells, power = \
-        utilities.map_pgids_2d(index)
+        utilities.map_pgids_2d(tensor_container.index)
 
-    splags = get_splags(tensor, ncells, ncells, times,pgids, time_to_index, pgid_to_index,
-                        pgid_to_longlat, weights)
+    tensor_container.tensor = get_splags(tensor_container.tensor, ncells, ncells, times,pgids, time_to_index,
+                                         pgid_to_index, pgid_to_longlat, weights)
 
-    return splags
+    return tensor_container
+
+@dne_wrapper
+def splag_country(tensor_container,kernel_inner: int = 1,kernel_width: int = 1,kernel_power: int = 0,
+                      norm_kernel: int = 0):
+
+    """
+    get_splag_country
+    =================
+
+    parameters:
+        tensor (numpy tensor): tensor containing data to be transformed.
+
+        kernel_inner (int):    Inner radius of convolution kernel - '1'
+                               represents the target country, '2' represents
+                               the target country plus its first-order
+                               neighbours, and so on.
+
+        kernel_outer (int):    Width of convolution kernel - '1' represents
+                               (kernel_inner+1)-th order neighbours,  '2'
+                               represents (kernel_inner+2)-th order neighbours,
+                               and so on.
+
+        kernel_power (int):    Countries are weighted by:
+                               (distance from target country)^kernel_power
+                               kernel_power=0 results in unweighted results
+
+        norm_kernel (int):     If set to 1, the sum of the weights over all
+                               neighbours for a given target country is
+                               normalised to 1.0
+
+    returns:
+        tensor: tensor with the lagged variables
+
+    Performs convolutional spatial lags at the country level.
+
+    Country first-order neighbours are obtained directly from the
+    country_country_month_ expanded table and represented as a month x country
+    x country tensor.
+
+    n-th order neighbours are obtained iteratively.
+
+    The lagged variable is named following this pattern:
+    "splag_{kernel_inner}_{kernel_outer}_{kernel_power}_{feature_name}"
+
+    """
+
+    def get_country_neighbours(
+            neighbs,
+            ninner,
+            nouter,
+            month_id,
+            month_to_index,
+            country_to_index,
+            index_to_country,
+            neighb_tensor_data,
+    ):
+        """
+
+        get_country_neighbours
+
+        For a given target country, an inner order and an outer order - gets nth-order neighbours for
+        n=outer and n=inner and finds the disjoint between the two sets.
+
+        """
+
+        if ninner < 0:
+            inner_neighbs = []
+            ninner = 0
+        else:
+            inner_neighbs = neighbs.copy()
+
+        inner_neighbs = get_nth_order_neighbours_from_tensor(
+            inner_neighbs,
+            month_id,
+            ninner,
+            month_to_index,
+            country_to_index,
+            index_to_country,
+            neighb_tensor_data,
+        )
+
+        if nouter < 0:
+            outer_neighbs = []
+            nouter = 0
+        else:
+            outer_neighbs = neighbs.copy()
+
+        outer_neighbs = get_nth_order_neighbours_from_tensor(
+            outer_neighbs,
+            month_id,
+            nouter,
+            month_to_index,
+            country_to_index,
+            index_to_country,
+            neighb_tensor_data,
+        )
+
+        neighbs = np.sort(list(set(outer_neighbs).difference(set(inner_neighbs))))
+
+        return neighbs
+
+    def get_nth_order_neighbours_from_tensor(
+            neighbs,
+            month_id,
+            norder,
+            month_to_index,
+            country_to_index,
+            index_to_country,
+            neighb_tensor_data,
+    ):
+        """
+
+        get_nth_order_neighbours
+
+        Fetches nth order neighbours around target country *including the target country*
+
+        """
+
+        if norder == 0:
+            return neighbs
+        else:
+
+            neighbscopy = neighbs.copy()
+
+            month_index = month_to_index[month_id]
+
+            for country in neighbs:
+
+                country_index = country_to_index[country]
+
+                neighb_row = neighb_tensor_data[month_index, country_index, :]
+
+                new_neighb_indices = np.where(neighb_row)[0]
+
+                new_neighbs = [index_to_country[n] for n in new_neighb_indices]
+
+                for newn in new_neighbs:
+
+                    if newn not in neighbscopy:
+                        neighbscopy.append(newn)
+
+            neighbs = neighbscopy
+
+            norder -= 1
+
+            return get_nth_order_neighbours_from_tensor(
+                neighbs,
+                month_id,
+                norder,
+                month_to_index,
+                country_to_index,
+                index_to_country,
+                neighb_tensor_data,
+            )
+
+    tensor, index = tensor_container.tensor, tensor_container.index
+
+    data_month_ids, data_month_to_index, data_index_to_month = utilities.map_times(index)
+
+    data_country_ids, data_country_to_index, data_index_to_country = utilities.map_spaces(index)
+
+    neighb_tensor = utilities.get_country_neighbours_tensor()
+
+    neighb_month_ids = neighb_tensor.coords["month"].values
+    neighb_country_ids = neighb_tensor.coords["country"].values
+
+    neighb_month_to_index = {}
+    neighb_index_to_month = {}
+    for imonth, month in enumerate(neighb_month_ids):
+        neighb_month_to_index[month] = imonth
+
+    neighb_country_to_index = {}
+    neighb_index_to_country = {}
+    for icountry, country in enumerate(neighb_country_ids):
+        neighb_country_to_index[country] = icountry
+        neighb_index_to_country[icountry] = country
+
+    distances = utilities.get_country_distances(
+        data_country_ids, data_country_to_index
+    )
+
+    neighb_tensor_data = neighb_tensor.values
+
+    splag = np.zeros_like(tensor)
+
+    ninner = kernel_inner - 1
+    nouter = ninner + kernel_width
+
+    for month_id in data_month_ids:
+        data_month_index = data_month_to_index[month_id]
+        if month_id in neighb_month_ids:
+
+            for country_id in data_country_ids:
+                data_country_index = data_country_to_index[country_id]
+
+                if country_id in neighb_country_ids:
+                    neighbs = get_country_neighbours(
+                            [
+                                country_id,
+                            ],
+                            ninner,
+                            nouter,
+                            month_id,
+                            neighb_month_to_index,
+                            neighb_country_to_index,
+                            neighb_index_to_country,
+                            neighb_tensor_data,
+                        )
+
+                    neighbs = [n for n in neighbs if n in data_country_ids]
+                else:
+                    neighbs = []
+
+                neighbs_data_indices = [data_country_to_index[n] for n in neighbs]
+
+                weights = (
+                            distances[data_country_index, neighbs_data_indices] ** kernel_power
+                    )
+
+                if norm_kernel:
+                    weights /= np.sum(weights)
+
+                for ifeature in range(tensor.shape[-1]):
+                    vals = tensor[data_month_index, neighbs_data_indices, ifeature]
+
+                    vals[vals == np.inf] = 0.0
+                    vals[vals == -np.inf] = 0.0
+                    vals[vals == np.nan] = 0.0
+
+                    splag[data_month_index, data_country_index, ifeature] = np.nansum(vals * weights)
+
+    tensor_container.tensor = splag
+
+    return tensor_container

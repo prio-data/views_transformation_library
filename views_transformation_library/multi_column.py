@@ -1,30 +1,71 @@
 import numpy as np
+from views_transformation_library import utilities
+from utilities import dne_wrapper
 
-def add_column(tensor):
+@dne_wrapper
+def add_column(tensor_container,dummy):
 
-    if len(tensor.shape[2])!=2:
-        raise RuntimeError(f'Tensor with {len(tensor.shape[2])} passed to multicolumn add')
+    if len(tensor_container.tensor.shape[2])!=2:
+        raise RuntimeError(f'Tensor with {len(tensor_container.tensor.shape[2])} passed to multicolumn add')
 
-    return tensor[:,:,0] + tensor[:,:,1]
+    left_feature = tensor_container.tensor[:,:,0]
+    right_feature = tensor_container.tensor[:,:,1]
 
-def subtract_column(tensor):
+    tensor_container.tensor[:,:,0] = left_feature + right_feature
 
-    if len(tensor.shape[2]) != 2:
-        raise RuntimeError(f'Tensor with {len(tensor.shape[2])} passed to multicolumn subtract')
+    tensor_container.tensor = tensor_container.tensor[:,:,0].reshape(tensor_container.tensor.shape[0],
+                                                                     tensor_container.tensor.shape[1],
+                                                                     1)
 
+    return tensor_container
 
-    return tensor[:,:,0] - tensor[:,:,1]
+@dne_wrapper
+def subtract_column(tensor_container,dummy):
 
-def multiply_column(tensor):
+    if len(tensor_container.tensor.shape[2]) != 2:
+        raise RuntimeError(f'Tensor with {len(tensor_container.tensor.shape[2])} passed to multicolumn subtract')
 
-    if len(tensor.shape[2]) != 2:
-        raise RuntimeError(f'Tensor with {len(tensor.shape[2])} passed to multicolumn multiply')
+    left_feature = tensor_container.tensor[:, :, 0]
+    right_feature = tensor_container.tensor[:, :, 1]
 
-    return tensor[:,:,0] * tensor[:,:,1]
+    tensor_container.tensor[:, :, 0] = left_feature - right_feature
 
-def divide_column(tensor):
+    tensor_container.tensor = tensor_container.tensor[:,:,0].reshape(tensor_container.tensor.shape[0],
+                                                                     tensor_container.tensor.shape[1],
+                                                                     1)
 
-    if len(tensor.shape[2]) != 2:
-        raise RuntimeError(f'Tensor with {len(tensor.shape[2])} passed to multicolumn divide')
+    return tensor_container
 
-    return tensor[:,:,0] / tensor[:,:,1]
+@dne_wrapper
+def multiply_column(tensor_container,dummy):
+
+    if len(tensor_container.tensor.shape[2]) != 2:
+        raise RuntimeError(f'Tensor with {len(tensor_container.tensor.shape[2])} passed to multicolumn multiply')
+
+    left_feature = tensor_container.tensor[:, :, 0]
+    right_feature = tensor_container.tensor[:, :, 1]
+
+    tensor_container.tensor[:, :, 0] = left_feature * right_feature
+
+    tensor_container.tensor = tensor_container.tensor[:,:,0].reshape(tensor_container.tensor.shape[0],
+                                                                     tensor_container.tensor.shape[1],
+                                                                     1)
+
+    return tensor_container
+
+@dne_wrapper
+def divide_column(tensor_container,dummy):
+
+    if len(tensor_container.tensor.shape[2]) != 2:
+        raise RuntimeError(f'Tensor with {len(tensor_container.tensor.shape[2])} passed to multicolumn divide')
+
+    left_feature = tensor_container.tensor[:, :, 0]
+    right_feature = tensor_container.tensor[:, :, 1]
+
+    tensor_container.tensor[:, :, 0] = left_feature / right_feature
+
+    tensor_container.tensor = tensor_container.tensor[:,:,0].reshape(tensor_container.tensor.shape[0],
+                                                                     tensor_container.tensor.shape[1],
+                                                                     1)
+
+    return tensor_container

@@ -2,20 +2,30 @@
 
 """
 
-def delta(tensor,time: int=1):
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+import warnings
+from utilities import dne_wrapper
+
+@dne_wrapper
+def delta(tensor_container,time: int=1):
+
+    missing = tensor_container.missing
 
     if time < 1:
         raise RuntimeError(f'Time below 1 passed to delta: {time}')
 
-    for itime in reversed(range(tensor.shape[0])):
+    for itime in reversed(range(tensor_container.tensor.shape[0])):
         if itime - time < 0:
-            tensor[itime, :, :] = np.nan
+            tensor_container.tensor[itime, :, :] = missing
         else:
-            tensor[itime, :, :] = tensor[itime, :, :] - tensor[itime-time, :, :]
+            tensor_container.tensor[itime, :, :] = (tensor_container.tensor[itime, :, :] -
+                                                    tensor_container.tensor[itime-time, :, :])
 
-    return tensor
+    return tensor_container
 
-def tlag(tensor, time: int):
+@dne_wrapper
+def tlag(tensor_container, time: int):
     """
     tlag
 
@@ -26,18 +36,21 @@ def tlag(tensor, time: int):
 
     """
 
+    missing = tensor_container.missing
+
     if time < 1:
         raise RuntimeError(f'Time below 1 passed to tlag: {time}')
 
-    for itime in reversed(range(tensor.shape[0])):
+    for itime in reversed(range(tensor_container.tensor.shape[0])):
         if itime - time < 0:
-            tensor[itime, :, :] = np.nan
+            tensor_container.tensor[itime, :, :] = missing
         else:
-            tensor[itime, :, :] = tensor[itime-time, :, :]
+            tensor_container.tensor[itime, :, :] = tensor_container.tensor[itime-time, :, :]
 
-    return tensor
+    return tensor_container
 
-def moving_average(tensor, time: int):
+@dne_wrapper
+def moving_average(tensor_container, time: int):
     """
     moving_average
 
@@ -53,18 +66,20 @@ def moving_average(tensor, time: int):
 
     with warnings.catch_warnings(action="ignore"):
 
-        tensor[time-1:,:,:] = np.nanmean(sliding_window_view(tensor, time, 0),axis=3)
+        tensor_container.tensor[time-1:,:,:] = np.nanmean(sliding_window_view(
+                                               tensor_container.tensor, time, 0),axis=3)
 
-        stub = np.zeros_like(tensor[:time-1,:,:])
+        stub = np.zeros_like(tensor_container.tensor[:time-1,:,:])
 
         for itime in range(time-1):
-            stub[itime, :, :] = np.nanmean(tensor[:itime+1,:,:], axis=0)
+            stub[itime, :, :] = np.nanmean(tensor_container.tensor[:itime+1,:,:], axis=0)
 
-    tensor[:time-1,:,:] = stub
+    tensor_container.tensor[:time-1,:,:] = stub
 
-    return tensor
+    return tensor_container
 
-def moving_sum(tensor, time: int):
+@dne_wrapper
+def moving_sum(tensor_container, time: int):
     """
     moving_sum
 
@@ -80,25 +95,37 @@ def moving_sum(tensor, time: int):
 
     with warnings.catch_warnings(action="ignore"):
 
-        tensor[time - 1:, :, :] = np.nansum(sliding_window_view(tensor, time, 0),axis=3)
+        tensor_container.tensor[time - 1:, :, :] = np.nansum(sliding_window_view(
+                                                   tensor_container.tensor, time, 0),axis=3)
 
-        stub = np.zeros_like(tensor[:time - 1, :, :])
+        stub = np.zeros_like(tensor_container.tensor[:time - 1, :, :])
 
         for itime in range(time-1):
-            stub[itime, :, :] = np.nansum(tensor[:itime+1,:,:], axis=0)
+            stub[itime, :, :] = np.nansum(tensor_container.tensor[:itime+1,:,:], axis=0)
 
-    tensor[:time-1,:,:] = stub
+    tensor_container.tensor[:time-1,:,:] = stub
 
-    return tensor
+    return tensor_container
 
-def cweq(tensor, value: float, seed=None):
-    for ifeature in range(tensor.shape[2]):
-        mask = np.where(tensor[:,:,ifeature] == value, 1, np.nan)
-        nan_mask = np.where(np.isnan(tensor[:,:,ifeature]), np.nan, 0)
+@dne_wrapper
+def cweq(tensor_container, value: float, seed=None):
 
-        nan_mask = np.where(nan_mask, np.nan, mask)
+    missing = tensor_container.missing
 
-        boolean_nan_mask = np.isnan(nan_mask)
+    for ifeature in range(tensor_container.tensor.shape[2]):
+#        mask = np.where(tensor_container.tensor[:,:,ifeature] == value, 1, np.nan)
+#        nan_mask = np.where(np.isnan(tensor_container.tensor[:,:,ifeature]), np.nan, 0)
+
+#        nan_mask = np.where(nan_mask, np.nan, mask)
+
+#        boolean_nan_mask = np.isnan(nan_mask)
+
+        mask = np.where(tensor_container.tensor[:,:,ifeature] == value, 1, missing)
+        nan_mask = np.where(tensor_container.tensor[:,:,ifeature]==missing, np.nan, 0)
+
+        nan_mask = np.where(nan_mask, missing, mask)
+
+        boolean_nan_mask = np.where(nan_mask==missing,True,False)
 
         cumsum_boolean = np.cumsum(~boolean_nan_mask, axis=0)
 
@@ -110,21 +137,22 @@ def cweq(tensor, value: float, seed=None):
 
             virow[nirow] = -mask_diffs
 
-            tensor[:,ispace, ifeature] = np.cumsum(virow)
+            tensor_container.tensor[:,ispace, ifeature] = np.cumsum(virow)
 
             if seed is not None:
                 seed1 = seed-1
-                if tensor[:,ispace, ifeature][0] != 0:
-                    for itime in range(tensor.shape[0]):
-                        if tensor[itime,ispace,ifeature] == 0:
+                if tensor_container.tensor[:,ispace, ifeature][0] != 0:
+                    for itime in range(tensor_container.tensor.shape[0]):
+                        if tensor_container.tensor[itime,ispace,ifeature] == 0:
                             break
                         else:
-                            tensor[itime, ispace, ifeature] += seed1
+                            tensor_container.tensor[itime, ispace, ifeature] += seed1
 
 
-    return tensor
+    return tensor_container
 
-def time_since(tensor, value=0, seed=None):
+@dne_wrapper
+def time_since(tensor_container, value=0, seed=None):
     """
     time_since
 
@@ -157,11 +185,14 @@ def time_since(tensor, value=0, seed=None):
 
     """
 
-    tensor = tlag(tensor,time=1)
+    tensor_container = tlag(tensor_container,time=1)
 
-    return cweq(tensor, value=value, seed=seed)
+    tensor_container = cweq(tensor_container, value=value, seed=seed)
 
-def decay(tensor, halflife: float):
+    return tensor_container
+
+@dne_wrapper
+def decay(tensor_container, halflife: float):
     """
     decay
 
@@ -176,9 +207,13 @@ def decay(tensor, halflife: float):
     """
 
     halflife = -halflife
-    return 2 ** (tensor/halflife)
 
-def onset_possible(tensor, window: int):
+    tensor_container.tensor = 2 ** (tensor_container.tensor/halflife)
+
+    return tensor_container
+
+@dne_wrapper
+def onset_possible(tensor_container, window: int):
     """
     onset_possible
 
@@ -190,12 +225,13 @@ def onset_possible(tensor, window: int):
 
     """
 
-    tensor = (~rollmax(replace_na(tlag(tensor, 1),0.), window).
+    tensor_container.tensor = (~rollmax(replace_na(tlag(tensor_container, 1),0.), window).
               astype(bool,copy=False)).astype(int,copy=False)
 
-    return tensor
+    return tensor_container
 
-def onset(tensor, window: int):
+@dne_wrapper
+def onset(tensor_container, window: int):
     """
     onset
 
@@ -206,12 +242,19 @@ def onset(tensor, window: int):
          window: integer specifying how many zero values must exist before a non-zero value to constitute an onset
 
     """
+
+    tensor = tensor_container.tensor
+
     tensor = (
         onset_possible(tensor.copy(), window).astype(bool) & tensor.copy().astype(bool)
-    ).astype(int)
-    return tensor
+                              ).astype(int)
 
-def temporal_entropy(tensor,window,offset=0.):
+    tensor_container.tensor = tensor
+
+    return tensor_container
+
+@dne_wrapper
+def temporal_entropy(tensor_container,window,offset=0.):
     """
     temporal_entropy created 04/03/2022 by Jim Dale
 
@@ -238,29 +281,35 @@ def temporal_entropy(tensor,window,offset=0.):
     A tensor containing the entropy computed for all times for all features
 
     """
-    tensor = np.where(np.isnan(tensor),0.0,tensor)
 
-    tensor += offset
+    missing = tensor_container.missing
 
-    entropy = np.zeros_like(tensor)
+    tensor_container.tensor = np.where(tensor_container.tensor==missing,0.0,tensor_container.tensor)
 
-    for itime in range(tensor.shape[0]):
+    tensor_container.tensor += offset
+
+    entropy = np.zeros_like(tensor_container.tensor)
+
+    for itime in range(tensor_container.tensor.shape[0]):
         if itime < window - 1:
             istart = 0
         else:
             istart = itime - window + 1
 
-        sum_over_window = np.sum(tensor[istart:itime+1], axis=0)
+        sum_over_window = np.sum(tensor_container.tensor[istart:itime+1], axis=0)
 
-        entropy[itime, :, :] = -np.sum(tensor[istart:itime+1]/sum_over_window *
-                                       np.log2(tensor[istart:itime+1]/sum_over_window), axis=0)
+        entropy[itime, :, :] = -np.sum(tensor_container.tensor[istart:itime+1]/sum_over_window *
+                                       np.log2(tensor_container.tensor[istart:itime+1]/sum_over_window), axis=0)
 
     entropy += offset*np.log2(offset/window)
 
-    return entropy
+    tensor_container.tensor = entropy
+
+    return tensor_container
 
 
-def temporal_tree_lag(tensor, index, thetacrit, weight_functions, sigma):
+@dne_wrapper
+def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigma):
     """
     get_tree_lag
 
@@ -486,6 +535,11 @@ def temporal_tree_lag(tensor, index, thetacrit, weight_functions, sigma):
                     if node.isleaf and (node.start == time):
                         for ifeature in range(tensor.shape[-1]):
                             vals = tensor[itime, :, ifeature]
+
+                            vals[vals == np.inf] = 0.0
+                            vals[vals == -np.inf] = 0.0
+                            vals[vals == np.nan] = 0.0
+
                             node.features[ifeature] += vals
                             node.nleaf = 1
                             parentid = node.parent
@@ -693,10 +747,10 @@ def temporal_tree_lag(tensor, index, thetacrit, weight_functions, sigma):
 
     tree.build_tree(index)
 
-    tree.stock_initial(tensor)
+    tree.stock_initial(tensor_container.tensor)
 
     tree.get_weight_functions(weight_functions)
 
-    tensor = tree.tree_lag(tensor, thetacrit, sigma)
+    tensor_container.tensor = tree.tree_lag(tensor_container.tensor, thetacrit, sigma)
 
-    return tensor
+    return tensor_container

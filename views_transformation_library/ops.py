@@ -5,8 +5,10 @@
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 import warnings
+from utilities import dne_wrapper
 
-def ln(tensor):
+@dne_wrapper
+def ln(tensor_container):
     """
     ln
 
@@ -17,4 +19,6 @@ def ln(tensor):
 
     """
 
-    return np.log1p(tensor)
+    tensor_container.tensor = np.log1p(tensor_container.tensor)
+
+    return tensor_container

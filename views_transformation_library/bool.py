@@ -5,8 +5,10 @@
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 import warnings
+from utilities import dne_wrapper
 
-def greater_or_equal(tensor, value: float):
+@dne_wrapper
+def greater_or_equal(tensor_container, value: float):
     """
     greater_or_equal
 
@@ -19,9 +21,12 @@ def greater_or_equal(tensor, value: float):
 
     """
 
-    return np.where(tensor>=value,1,0)
+    tensor_container.tensor = np.where(tensor_container.tensor >= value,1,0)
 
-def smaller_or_equal(tensor, value: float):
+    return tensor_container
+
+@dne_wrapper
+def smaller_or_equal(tensor_container, value: float):
     """
     smaller_or_equal
 
@@ -34,9 +39,12 @@ def smaller_or_equal(tensor, value: float):
 
     """
 
-    return np.where(tensor<=value,1,0)
+    tensor_container.tensor = np.where(tensor_container.tensor<=value,1,0)
 
-def in_range(tensor, low: float, high: float):
+    return tensor_container
+
+@dne_wrapper
+def in_range(tensor_container, low: float, high: float):
     """
     greater_or_equal
 
@@ -49,4 +57,7 @@ def in_range(tensor, low: float, high: float):
 
     """
 
-    return np.where(np.logical_and(tensor>=low, tensor<=high),1,0)
+    tensor_container.tensor = np.where(np.logical_and(tensor_container.tensor>=low,
+                                                      tensor_container.tensor<=high),1,0)
+
+    return tensor_container

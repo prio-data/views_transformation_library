@@ -5,8 +5,10 @@
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 import warnings
+from utilities import dne_wrapper
 
-def mean(tensor):
+@dne_wrapper
+def mean(tensor_container):
     """
     mean
 
@@ -17,17 +19,23 @@ def mean(tensor):
 
     """
 
+    dne = tensor_container.dne
+    missing = tensor_container.missing
+
+    tensor_container.tensor[tensor_container.tensor==dne] = missing
+
     with warnings.catch_warnings(action="ignore"):
 
-        for ifeature in range(tensor.shape[2]):
-            time_mean = np.nanmean(tensor[:,:,ifeature],axis=0)
+        for ifeature in range(tensor_container.tensor.shape[2]):
+            time_mean = np.nanmean(tensor_container.tensor[:,:,ifeature],axis=0)
 
-            for ispace in range(tensor.shape[1]):
-                tensor[:,ispace,ifeature] = time_mean[ispace]
+            for ispace in range(tensor_container.tensor.shape[1]):
+                tensor_container.tensor[:,ispace,ifeature] = time_mean[ispace]
 
-    return tensor
+    return tensor_container
 
-def demean(tensor):
+@dne_wrapper
+def demean(tensor_container):
     """
     demean
 
@@ -39,17 +47,24 @@ def demean(tensor):
         None
 
     """
+
+    dne = tensor_container.dne
+    missing = tensor_container.missing
+
+    tensor_container.tensor[tensor_container.tensor==dne] = missing
+
     with warnings.catch_warnings(action="ignore"):
 
-        for ifeature in range(tensor.shape[2]):
-            time_mean = np.nanmean(tensor[:, :, ifeature], axis=0)
+        for ifeature in range(tensor_container.tensor.shape[2]):
+            time_mean = np.nanmean(tensor_container.tensor[:, :, ifeature], axis=0)
 
-            for ispace in range(tensor.shape[1]):
-                tensor[:, ispace, ifeature] -= time_mean[ispace]
+            for ispace in range(tenaro_container.tensor.shape[1]):
+                tensor_container.tensor[:, ispace, ifeature] -= time_mean[ispace]
 
-    return tensor
+    return tensor_container
 
-def rollmax(tensor, window: int):
+@dne_wrapper
+def rollmax(tensor_container, window: int):
     """
     rollmax
 
@@ -60,18 +75,24 @@ def rollmax(tensor, window: int):
 
     """
 
+    dne = tensor_container.dne
+    missing = tensor_container.missing
+
+    tensor_container.tensor[tensor_container.tensor==dne] = missing
+
     if window < 1:
         raise RuntimeError(f"Time below 1 passed to moving sum: {window} \n")
 
     with warnings.catch_warnings(action="ignore"):
 
-        tensor[window - 1:, :, :] = np.nanmax(sliding_window_view(tensor, window, 0), axis=3)
+        tensor_container.tensor[window - 1:, :, :] = np.nanmax(sliding_window_view(
+                                                     tensor_container.tensor, window, 0), axis=3)
 
-        stub = np.zeros_like(tensor[:window - 1, :, :])
+        stub = np.zeros_like(tensor_container.tensor[:window - 1, :, :])
 
         for itime in range(window - 1):
-            stub[itime, :, :] = np.nanmax(tensor[:itime + 1, :, :], axis=0)
+            stub[itime, :, :] = np.nanmax(tensor_container.tensor[:itime + 1, :, :], axis=0)
 
-    tensor[:window - 1, :, :] = stub
+    tensor_container.tensor[:window - 1, :, :] = stub
 
-    return tensor
+    return tensor_container
