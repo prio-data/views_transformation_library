@@ -248,7 +248,7 @@ def build_4d_tensor(
 
     return tensor4d
     
-def df_to_datacube(df,use_stride_tricks):
+def tensor3d_to_tensor4d(tensor3d,index,use_stride_tricks):
 
     """
 
@@ -260,14 +260,14 @@ def df_to_datacube(df,use_stride_tricks):
 
     """
 
-    pgids,pgid_to_longlat,longlat_to_pgid,pgid_to_index,index_to_pgid,ncells,power=_map_pgids_2d(df)
+    pgids,pgid_to_longlat,longlat_to_pgid,pgid_to_index,index_to_pgid,ncells,power=_map_pgids_2d(index)
 
-    times,time_to_index,index_to_time=_map_times(df)
+    times,time_to_index,index_to_time=_map_times(index)
 
-    features=_map_features(df)
+    features=_map_features(index)
     
-    tensor=_build_4d_tensor(
-                           df,
+    tensor=build_4d_tensor(
+                           tensor3d,
                            pgids,
                            pgid_to_index,
                            times,
@@ -275,10 +275,30 @@ def df_to_datacube(df,use_stride_tricks):
                            ncells,
                            ncells,
                            pgid_to_longlat,
-                           features,
-                           use_stride_tricks)
+                           )
     
     return tensor
+
+def df_to_tensor4d(df):
+
+    tensor3d = df_to_tensor_strides(df)
+
+    pgids, pgid_to_longlat, longlat_to_pgid, pgid_to_index, index_to_pgid, ncells, power = map_pgids_2d(df.index)
+
+    times, time_to_index, index_to_time = map_times(df.index)
+
+    tensor4d = build_4d_tensor(
+        tensor3d,
+        pgids,
+        pgid_to_index,
+        times,
+        time_to_index,
+        ncells,
+        ncells,
+        pgid_to_longlat,
+    )
+
+    return tensor4d
     
 def get_country_neighbours_tensor():
 
