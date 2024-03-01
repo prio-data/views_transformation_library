@@ -3,9 +3,9 @@
 """
 
 import numpy as np
-from numpy.lib.stride_tricks import sliding_window_view
-import warnings
-from utilities import dne_wrapper
+
+from .utilities import dne_wrapper
+
 
 @dne_wrapper
 def ln(tensor_container):
@@ -15,7 +15,7 @@ def ln(tensor_container):
     Returns natural log of s+1
 
     Arguments:
-        None
+        tensor_container: ViewsTensor object
 
     """
 

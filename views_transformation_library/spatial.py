@@ -3,14 +3,14 @@
 """
 
 import numpy as np
-import pandas as pd
 from scipy.spatial import cKDTree
 from scipy import ndimage
-from views_transformation_library import utilities
-from utilities import dne_wrapper
+from .utilities import dne_wrapper, get_country_neighbours_tensor, get_country_distances
+from views_tensor_utilities import mappings, defaults
+
 
 @dne_wrapper
-def sptdist(tensor_container, return_values='distances', k=1, nu=1.0, power=0.0, last_month = -1):
+def sptdist(tensor_container, return_values='distances', k=1, nu=1.0, power=0.0, last_month=-1):
     """
     sptdist
 
@@ -40,11 +40,9 @@ def sptdist(tensor_container, return_values='distances', k=1, nu=1.0, power=0.0,
     """
 
     def get_space_time_distances(
-        tensor,
-        times,
-        pgids,
-        pgid_to_longlat,
-        time_to_index,
+        tensor_container,
+        time_units,
+        longlat_units,
         return_values,
         k,
         nu,
@@ -63,22 +61,26 @@ def sptdist(tensor_container, return_values='distances', k=1, nu=1.0, power=0.0,
 
         PGID_TO_DEGREES = 0.5
 
-        output = np.zeros((len(times), len(pgids), tensor.shape[-1]))
+        output = np.zeros((len(time_units.times), len(longlat_units.pgids),
+                           tensor_container.tensor.shape[-1])).astype(defaults.float_type)
 
-        for ifeature in range(tensor.shape[-1]):
+        for ifeature in range(tensor_container.tensor.shape[-1]):
 
-            events3d = utilities.build_4d_tensor(tensor[:, :, ifeature].reshape(len(times), len(pgids), 1),
-                                                 pgids, pgid_to_index, times, time_to_index, ncells, ncells,
-                                                 pgid_to_longlat).reshape(ncells, ncells, len(times))
+            events3d = mappings.numpy_time_space_to_longlat(tensor_container.tensor[:, :, ifeature].reshape(
+                                                            len(time_units.times), len(longlat_units.pgids), 1),
+                                                            tensor_container.index).reshape(
+                                                            longlat_units.gridsize, longlat_units.gridsize,
+                                                            len(time_units.times)
+                                                            )
 
-            for time in times[:last_month]:
+            for time in time_units.times[:last_month]:
 
-                tindex = time_to_index[time]
+                tindex = time_units.time_to_index[time]
 
                 points = np.array(np.where(events3d[:, :, :tindex + 1] > 0)).astype(float).T
 
                 if len(points) == 0:
-                    output[tindex,:,ifeature] = 999.
+                    output[tindex, :, ifeature] = 999.
                 else:
                     points[:, 0] *= PGID_TO_DEGREES
                     points[:, 1] *= PGID_TO_DEGREES
@@ -87,11 +89,11 @@ def sptdist(tensor_container, return_values='distances', k=1, nu=1.0, power=0.0,
 
                     feature = 999.
 
-                    for ipgid, pgid in enumerate(pgids):
-                        ilong, ilat = pgid_to_longlat[pgid]
+                    for ipgid, pgid in enumerate(longlat_units.pgids):
+                        ilong, ilat = longlat_units.pgid_to_longlat[pgid]
 
                         sptime_dists, ipoints = btree.query([ilong * PGID_TO_DEGREES, ilat * PGID_TO_DEGREES,
-                                                                 nu * tindex], k)
+                                                            nu * tindex], k)
 
                         if k == 1:
                             ipoints = [ipoints, ]
@@ -117,15 +119,18 @@ def sptdist(tensor_container, return_values='distances', k=1, nu=1.0, power=0.0,
                                 itimep = int(coords[2] / nu)
 
                                 if sptime_dists[i] == 0.0:
-                                    featurei[i] = tensor[ilongp, ilatp, itimep, 0]
+                                    featurei[i] = tensor_container.tensor[ilongp, ilatp, itimep, 0]
                                 else:
-                                    featurei[i] = tensor[ilongp, ilatp, itimep, 0] / (sptime_dists[i] ** power)
+                                    featurei[i] = tensor_container.tensor[ilongp, ilatp, itimep, 0] / (sptime_dists[i]
+                                                                                                       ** power)
 
                                 feature = np.mean(featurei)
 
                         output[tindex, ipgid, ifeature] = feature
 
-        return output
+        tensor_container.tensor = output
+
+        return tensor_container
 
     if return_values not in ['distances', 'weights']:
         raise Exception("unknown return_values; ", return_values,
@@ -133,17 +138,24 @@ def sptdist(tensor_container, return_values='distances', k=1, nu=1.0, power=0.0,
 
     power = np.abs(power)
 
-    times, time_to_index, index_to_time = utilities.map_times(tensor_container.index)
+    time_units = mappings.TimeUnits.from_pandas(tensor_container.index)
 
-    pgids, pgid_to_longlat, longlat_to_pgid, pgid_to_index, index_to_pgid, ncells, pwr = \
-        utilities.map_pgids_2d(tensor_container.index)
+    longlat_units = mappings.LonglatUnits.from_pandas(tensor_container.index)
 
-    if last_month<0: last_month = np.max(times)
+    if last_month < 0:
+        last_month = np.max(time_units.times)
 
-    tensor_container.tensor = get_space_time_distances(tensor_container.tensor,times,pgids,pgid_to_longlat,
-                                                       time_to_index,return_values,k,nu,power,last_month)
+    tensor_container = get_space_time_distances(tensor_container,
+                                                time_units,
+                                                longlat_units,
+                                                return_values,
+                                                k,
+                                                nu,
+                                                power,
+                                                last_month)
 
     return tensor_container
+
 
 @dne_wrapper
 def sp_tree(tensor_container, thetacrit, dfunction_option):
@@ -220,17 +232,12 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
         """
 
         def __init__(self):
-            self.ncells = 0
-            self.power = 0
-            self.pgids = None
-            self.pgid_to_longlat = {}
-            self.longlat_to_pgid = {}
-            self.pgid_to_index = {}
-            self.index_to_pgid = {}
+
+            self.time_units = None
+            self.longlat_units = None
             self.nodes = []
             self.interaction_lists = None
             self.interaction_weights = None
-            self.times = None
             self.features = None
             self.weightfunctions = None
 
@@ -261,10 +268,10 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
             """
 
-            self.pgids, self.pgid_to_longlat, self.longlat_to_pgid, self.pgid_to_index, \
-                self.index_to_pgid, self.ncells, self.power = utilities.map_pgids_2d(index)
+            self.time_units = mappings.TimeUnits.from_pandas(index)
+            self.longlat_units = mappings.LonglatUnits.from_pandas(index)
 
-            powers = [((2 ** p) ** 2) for p in range(self.power + 1)]
+            powers = [((2 ** p) ** 2) for p in range(self.longlat_units.power + 1)]
 
             cupowers = np.cumsum(powers)
 
@@ -272,15 +279,15 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
             # populate leaf nodes
 
-            for pgid in self.pgids:
-                ix, iy = self.pgid_to_longlat[pgid]
+            for pgid in self.longlat_units.pgids:
+                ix, iy = self.longlat_units.pgid_to_longlat[pgid]
 
-                levelindex = ix + iy * self.ncells
+                levelindex = ix + iy * self.longlat_units.gridsize
                 masterindex = cupowers[-2] + levelindex + 1
 
                 if nodes_provisional[masterindex] is None:
                     node = SpatialNode()
-                    node.level = self.power
+                    node.level = self.longlat_units.power
                     node.levelindex = levelindex
                     node.masterindex = masterindex
                     node.left = ix
@@ -296,16 +303,16 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
             # populate lower levels
 
-            for p in range(self.power - 1, -1, -1):
+            for p in range(self.longlat_units.power - 1, -1, -1):
                 istart = cupowers[p] - 1
                 iend = cupowers[p + 1]
                 ncellsp = 2 ** p
-                nodesize = self.ncells / ncellsp
+                nodesize = self.longlat_units.gridsize / ncellsp
                 for inode in range(istart, iend):
                     if nodes_provisional[inode] is not None:
                         node = nodes_provisional[inode]
-                        ix = int(node.centre[0] / float(self.ncells) * float(ncellsp))
-                        iy = int(node.centre[1] / float(self.ncells) * float(ncellsp))
+                        ix = int(node.centre[0] / float(self.longlat_units.gridsize) * float(ncellsp))
+                        iy = int(node.centre[1] / float(self.longlat_units.gridsize) * float(ncellsp))
                         levelindex = ix + iy * ncellsp
                         if (p - 1) < 0:
                             masterindex = 0
@@ -426,7 +433,7 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
             return
 
-        def stock(self, tensor3d, index):
+        def stock(self, tensor3d):
 
             """
             stock
@@ -442,11 +449,9 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
             self.features = np.arange(tensor3d.shape[-1])
 
-            self.times, _, _ = utilities.map_times(index)
-
             for node in self.nodes:
                 for feature in self.features:
-                    node.features.append(np.zeros(len(self.times)))
+                    node.features.append(np.zeros(len(self.time_units.times)))
 
                     # TODO weighted centres
 
@@ -454,7 +459,7 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
                 for node in self.nodes:
                     if node.isleaf:
                         pgid = node.pgid
-                        ipgid = self.pgid_to_index[pgid]
+                        ipgid = self.longlat_units.pgid_to_index[pgid]
                         vals = tensor3d[:, ipgid, ifeature]
 
                         node.features[feature] += vals
@@ -465,7 +470,7 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
             return
 
-        def tree_lag(self,dtype):
+        def tree_lag(self, dtype):
 
             """
             tree_lag
@@ -479,26 +484,26 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
             """
 
-            dim0 = len(self.times)
-            dim1 = len(self.pgids)
+            dim0 = len(self.time_units.times)
+            dim1 = len(self.longlat_units.pgids)
             dim2 = len(self.features)
             nweightfunctions = len(self.weightfunctions)
             weightkeys = list((self.weightfunctions.keys()))
 
-            treelags = np.zeros((dim0, dim1, dim2 * nweightfunctions),dtype=dtype)
+            treelags = np.zeros((dim0, dim1, dim2 * nweightfunctions), dtype=dtype)
 
             for ifeature, feature in enumerate(self.features):
                 for node in self.nodes:
                     if node.isleaf:
                         pgid = node.pgid
-                        ipgid = self.pgid_to_index[pgid]
+                        ipgid = self.longlat_units.pgid_to_index[pgid]
 
                         interactions = self.interaction_lists[pgid]
                         for iweight, weightkey in enumerate(weightkeys):
                             weights = np.array([self.interaction_weights[pgid][partner][weightkey] for partner in
                                                 interactions])
 
-                            sums = np.zeros(len(self.times))
+                            sums = np.zeros(len(self.time_units.times))
 
                             for partner, weight in zip(interactions, weights):
                                 node = self.nodes[partner]
@@ -541,11 +546,7 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
         return dfunctions
 
-#    tensor_container.tensor = np.where(np.isnan(tensor_container.tensor),0.0,tensor_container.tensor)
-
-    missing = tensor_container.missing
-
-    tensor_container.tensor = np.where(tensor_container.tensor==missing, 0.0, tensor_container.tensor)
+    tensor_container.tensor = np.where(np.isnan(tensor_container.tensor), 0.0, tensor_container.tensor)
 
     dfunctions = get_dfunctions(dfunction_option)
 
@@ -553,7 +554,7 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
     tree.build_tree(tensor_container.index)
 
-    tree.stock(tensor_container.tensor,tensor_container.index)
+    tree.stock(tensor_container.tensor)
 
     tree.walk(thetacrit, dfunctions)
 
@@ -563,8 +564,7 @@ def sp_tree(tensor_container, thetacrit, dfunction_option):
 
 
 @dne_wrapper
-def splag4d(tensor_container,kernel_inner=1, kernel_width=1,
-                kernel_power=0, norm_kernel=0):
+def splag4d(tensor_container, kernel_inner=1, kernel_width=1, kernel_power=0, norm_kernel=0):
     """
     splag4d created 19/03/2021 by Jim Dale
 
@@ -622,57 +622,49 @@ def splag4d(tensor_container,kernel_inner=1, kernel_width=1,
 
         return weights
 
-    def get_splags(
-            tensor,
-            longrange,
-            latrange,
-            times,
-            pgids,
-            time_to_index,
-            pgid_to_index,
-            pgid_to_longlat,
-            weights
-    ):
+    def get_splags(tensor_container, time_units, longlat_units, weights):
 
         # use scipy convolution function to do 2d convolution on tensor slices
 
-        for ifeature in range(tensor.shape[-1]):
-            splag_feature = utilities.build_4d_tensor(tensor[:, :, ifeature].reshape(len(times), len(pgids), 1),
-                                                 pgids, pgid_to_index, times, time_to_index, longrange, latrange,
-                                                 pgid_to_longlat).reshape(ncells, ncells, len(times))
+        dne = tensor_container.dne
 
-            for time in times:
-                tindex = time_to_index[time]
+        for ifeature in range(tensor_container.tensor.shape[-1]):
 
-                splag_feature[:,:,tindex] = ndimage.convolve(splag_feature[:,:,tindex], weights,
-                                                             mode='constant', cval=0.0)
+            splag_feature = mappings.numpy_time_space_to_longlat(tensor_container.tensor[:, :, ifeature].reshape(
+                                                                 len(time_units.times), len(longlat_units.pgids), 1),
+                                                                 tensor_container.index).reshape(
+                                                                 longlat_units.gridsize, longlat_units.gridsize,
+                                                                 len(time_units.times)
+                                                                 )
 
-            for ipgid, pgid in enumerate(pgids):
-                ilong, ilat = pgid_to_longlat[pgid]
-                tensor[:,ipgid,ifeature] = splag_feature[ilong,ilat,:]
+            splag_feature = np.where(np.isnan(splag_feature), 0.0, splag_feature)
+            splag_feature = np.where(splag_feature == dne, 0.0, splag_feature)
 
-        return tensor
+            for time in time_units.times:
+                tindex = time_units.time_to_index[time]
 
-#    tensor, index = tensor_container.tensor, tensor_container.index
+                splag_feature[:, :, tindex] = ndimage.convolve(splag_feature[:, :, tindex], weights,
+                                                               mode='constant', cval=0.0)
 
-    missing = tensor_container.missing
+            for ipgid, pgid in enumerate(longlat_units.pgids):
+                ilong, ilat = longlat_units.pgid_to_longlat[pgid]
+                tensor_container.tensor[:, ipgid, ifeature] = splag_feature[ilong, ilat, :]
 
-    tensor_container.tensor = np.where(tensor_container.tensor==missing, 0.0, tensor_container.tensor)
+        return tensor_container
 
     weights = build_kernel_weights(kernel_inner, kernel_width, kernel_power, norm_kernel)
 
-    times, time_to_index, index_to_time = utilities.map_times(tensor_container.index)
+    time_units = mappings.TimeUnits.from_pandas(tensor_container.index)
 
-    pgids, pgid_to_longlat, longlat_to_pgid, pgid_to_index, index_to_pgid, ncells, power = \
-        utilities.map_pgids_2d(tensor_container.index)
+    longlat_units = mappings.LonglatUnits.from_pandas(tensor_container.index)
 
-    tensor_container.tensor = get_splags(tensor_container.tensor, ncells, ncells, times,pgids, time_to_index,
-                                         pgid_to_index, pgid_to_longlat, weights)
+    tensor_container = get_splags(tensor_container, time_units, longlat_units, weights)
 
     return tensor_container
 
+
 @dne_wrapper
-def splag_country(tensor_container,kernel_inner: int = 1,kernel_width: int = 1,kernel_power: int = 0,
+def splag_country(tensor_container, kernel_inner: int = 1, kernel_width: int = 1, kernel_power: int = 0,
                       norm_kernel: int = 0):
 
     """
@@ -827,11 +819,15 @@ def splag_country(tensor_container,kernel_inner: int = 1,kernel_width: int = 1,k
 
     tensor, index = tensor_container.tensor, tensor_container.index
 
-    data_month_ids, data_month_to_index, data_index_to_month = utilities.map_times(index)
+#    data_month_ids, data_month_to_index, data_index_to_month = utilities.map_times(index)
 
-    data_country_ids, data_country_to_index, data_index_to_country = utilities.map_spaces(index)
+#    data_country_ids, data_country_to_index, data_index_to_country = utilities.map_spaces(index)
 
-    neighb_tensor = utilities.get_country_neighbours_tensor()
+    data_time_units = mappings.TimeUnits.from_pandas(index)
+
+    data_space_units = mappings.SpaceUnits.from_pandas(index)
+
+    neighb_tensor = get_country_neighbours_tensor()
 
     neighb_month_ids = neighb_tensor.coords["month"].values
     neighb_country_ids = neighb_tensor.coords["country"].values
@@ -847,9 +843,7 @@ def splag_country(tensor_container,kernel_inner: int = 1,kernel_width: int = 1,k
         neighb_country_to_index[country] = icountry
         neighb_index_to_country[icountry] = country
 
-    distances = utilities.get_country_distances(
-        data_country_ids, data_country_to_index
-    )
+    distances = get_country_distances(data_space_units.spaces, data_space_units.space_to_index)
 
     neighb_tensor_data = neighb_tensor.values
 
@@ -858,12 +852,12 @@ def splag_country(tensor_container,kernel_inner: int = 1,kernel_width: int = 1,k
     ninner = kernel_inner - 1
     nouter = ninner + kernel_width
 
-    for month_id in data_month_ids:
-        data_month_index = data_month_to_index[month_id]
+    for month_id in data_time_units.times:
+        data_month_index = data_time_units.time_to_index[month_id]
         if month_id in neighb_month_ids:
 
-            for country_id in data_country_ids:
-                data_country_index = data_country_to_index[country_id]
+            for country_id in data_space_units.spaces:
+                data_country_index = data_space_units.space_to_index[country_id]
 
                 if country_id in neighb_country_ids:
                     neighbs = get_country_neighbours(
@@ -879,11 +873,11 @@ def splag_country(tensor_container,kernel_inner: int = 1,kernel_width: int = 1,k
                             neighb_tensor_data,
                         )
 
-                    neighbs = [n for n in neighbs if n in data_country_ids]
+                    neighbs = [n for n in neighbs if n in data_space_units.spaces]
                 else:
                     neighbs = []
 
-                neighbs_data_indices = [data_country_to_index[n] for n in neighbs]
+                neighbs_data_indices = [data_space_units.space_to_index[n] for n in neighbs]
 
                 weights = (
                             distances[data_country_index, neighbs_data_indices] ** kernel_power

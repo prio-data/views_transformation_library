@@ -5,24 +5,34 @@
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 import warnings
-from utilities import dne_wrapper
+from .utilities import dne_wrapper
+from . import missing
+from . import unit
+from views_tensor_utilities import mappings
+
 
 @dne_wrapper
-def delta(tensor_container,time: int=1):
+def delta(tensor_container, time: int = 1):
 
     missing = tensor_container.missing
+    dne = tensor_container.dne
+
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
 
     if time < 1:
         raise RuntimeError(f'Time below 1 passed to delta: {time}')
 
-    for itime in reversed(range(tensor_container.tensor.shape[0])):
-        if itime - time < 0:
-            tensor_container.tensor[itime, :, :] = missing
-        else:
-            tensor_container.tensor[itime, :, :] = (tensor_container.tensor[itime, :, :] -
-                                                    tensor_container.tensor[itime-time, :, :])
+    with warnings.catch_warnings(action="ignore"):
+
+        for itime in reversed(range(tensor_container.tensor.shape[0])):
+            if itime - time < 0:
+                tensor_container.tensor[itime, :, :] = missing
+            else:
+                tensor_container.tensor[itime, :, :] = (tensor_container.tensor[itime, :, :] -
+                                                        tensor_container.tensor[itime-time, :, :])
 
     return tensor_container
+
 
 @dne_wrapper
 def tlag(tensor_container, time: int):
@@ -37,6 +47,9 @@ def tlag(tensor_container, time: int):
     """
 
     missing = tensor_container.missing
+    dne = tensor_container.dne
+
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
 
     if time < 1:
         raise RuntimeError(f'Time below 1 passed to tlag: {time}')
@@ -49,6 +62,7 @@ def tlag(tensor_container, time: int):
 
     return tensor_container
 
+
 @dne_wrapper
 def moving_average(tensor_container, time: int):
     """
@@ -57,26 +71,32 @@ def moving_average(tensor_container, time: int):
     Computes moving average over a specified time window
 
     Arguments:
-         window: integer size of moving time window over which to average
+         time: integer size of moving time window over which to average
 
     """
+
+    missing = tensor_container.missing
+    dne = tensor_container.dne
+
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
 
     if time < 1:
         raise RuntimeError(f"Time below 1 passed to moving average: {time} \n")
 
     with warnings.catch_warnings(action="ignore"):
 
-        tensor_container.tensor[time-1:,:,:] = np.nanmean(sliding_window_view(
+        tensor_container.tensor[time-1:, :, :] = np.nanmean(sliding_window_view(
                                                tensor_container.tensor, time, 0),axis=3)
 
-        stub = np.zeros_like(tensor_container.tensor[:time-1,:,:])
+        stub = np.zeros_like(tensor_container.tensor[:time-1, :, :])
 
         for itime in range(time-1):
-            stub[itime, :, :] = np.nanmean(tensor_container.tensor[:itime+1,:,:], axis=0)
+            stub[itime, :, :] = np.nanmean(tensor_container.tensor[:itime+1, :, :], axis=0)
 
-    tensor_container.tensor[:time-1,:,:] = stub
+    tensor_container.tensor[:time-1, :, :] = stub
 
     return tensor_container
+
 
 @dne_wrapper
 def moving_sum(tensor_container, time: int):
@@ -86,9 +106,14 @@ def moving_sum(tensor_container, time: int):
     Computes moving sum over a specified time window
 
     Arguments:
-         window: integer size of moving time window over which to average
+         time: integer size of moving time window over which to average
 
     """
+
+    missing = tensor_container.missing
+    dne = tensor_container.dne
+
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
 
     if time < 1:
         raise RuntimeError(f"Time below 1 passed to moving sum: {time} \n")
@@ -101,66 +126,61 @@ def moving_sum(tensor_container, time: int):
         stub = np.zeros_like(tensor_container.tensor[:time - 1, :, :])
 
         for itime in range(time-1):
-            stub[itime, :, :] = np.nansum(tensor_container.tensor[:itime+1,:,:], axis=0)
+            stub[itime, :, :] = np.nansum(tensor_container.tensor[:itime+1, :, :], axis=0)
 
-    tensor_container.tensor[:time-1,:,:] = stub
+    tensor_container.tensor[:time-1, :, :] = stub
 
     return tensor_container
+
 
 @dne_wrapper
 def cweq(tensor_container, value: float, seed=None):
 
     missing = tensor_container.missing
+    dne = tensor_container.dne
 
-    for ifeature in range(tensor_container.tensor.shape[2]):
-#        mask = np.where(tensor_container.tensor[:,:,ifeature] == value, 1, np.nan)
-#        nan_mask = np.where(np.isnan(tensor_container.tensor[:,:,ifeature]), np.nan, 0)
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
 
-#        nan_mask = np.where(nan_mask, np.nan, mask)
+    for ifeature in range(tensor_container.tensor.shape[-1]):
 
-#        boolean_nan_mask = np.isnan(nan_mask)
+        mask = np.where(tensor_container.tensor[:, :, ifeature] == value, 1, missing)
 
-        mask = np.where(tensor_container.tensor[:,:,ifeature] == value, 1, missing)
-        nan_mask = np.where(tensor_container.tensor[:,:,ifeature]==missing, np.nan, 0)
-
-        nan_mask = np.where(nan_mask, missing, mask)
-
-        boolean_nan_mask = np.where(nan_mask==missing,True,False)
+        boolean_nan_mask = np.isnan(mask)
 
         cumsum_boolean = np.cumsum(~boolean_nan_mask, axis=0)
 
-        for ispace in range(nan_mask.shape[1]):
-            mask_diffs = np.diff(cumsum_boolean[:,ispace][boolean_nan_mask[:,ispace]],prepend=0)
+        for ispace in range(mask.shape[1]):
+            mask_diffs = np.diff(cumsum_boolean[:, ispace][boolean_nan_mask[:, ispace]], prepend=0)
 
-            virow = nan_mask[:,ispace]
-            nirow = boolean_nan_mask[:,ispace]
+            virow = mask[:, ispace]
+            nirow = boolean_nan_mask[:, ispace]
 
             virow[nirow] = -mask_diffs
 
-            tensor_container.tensor[:,ispace, ifeature] = np.cumsum(virow)
+            tensor_container.tensor[:, ispace, ifeature] = np.cumsum(virow)
 
             if seed is not None:
                 seed1 = seed-1
-                if tensor_container.tensor[:,ispace, ifeature][0] != 0:
+                if tensor_container.tensor[:, ispace, ifeature][0] != 0:
                     for itime in range(tensor_container.tensor.shape[0]):
-                        if tensor_container.tensor[itime,ispace,ifeature] == 0:
+                        if tensor_container.tensor[itime, ispace, ifeature] == 0:
                             break
                         else:
                             tensor_container.tensor[itime, ispace, ifeature] += seed1
 
-
     return tensor_container
+
 
 @dne_wrapper
 def time_since(tensor_container, value=0, seed=None):
     """
     time_since
 
-    time since event in series, where an event is where the series devaites from value.
+    time since event in series, where an event is where the series deviates from value.
 
     In order to compute a variable like "time since previous conflict
     event" we must apply a timelag to cweq() to get a series because
-    for fitting a simultanous model we do not want the counter to be
+    for fitting a simultaneous model we do not want the counter to be
     simultaneous to the event.
 
     Consider the data:
@@ -185,11 +205,12 @@ def time_since(tensor_container, value=0, seed=None):
 
     """
 
-    tensor_container = tlag(tensor_container,time=1)
+    tensor_container = tlag(tensor_container, time=1)
 
     tensor_container = cweq(tensor_container, value=value, seed=seed)
 
     return tensor_container
+
 
 @dne_wrapper
 def decay(tensor_container, halflife: float):
@@ -212,6 +233,7 @@ def decay(tensor_container, halflife: float):
 
     return tensor_container
 
+
 @dne_wrapper
 def onset_possible(tensor_container, window: int):
     """
@@ -225,10 +247,12 @@ def onset_possible(tensor_container, window: int):
 
     """
 
-    tensor_container.tensor = (~rollmax(replace_na(tlag(tensor_container, 1),0.), window).
-              astype(bool,copy=False)).astype(int,copy=False)
+    tensor_container = unit.rollmax(missing.replace_na(tlag(tensor_container, 1), 0.), window)
+
+    tensor_container.tensor = ~(tensor_container.tensor.astype(bool, copy=False))
 
     return tensor_container
+
 
 @dne_wrapper
 def onset(tensor_container, window: int):
@@ -243,18 +267,15 @@ def onset(tensor_container, window: int):
 
     """
 
-    tensor = tensor_container.tensor
+    onset_container = onset_possible(tensor_container, window)
 
-    tensor = (
-        onset_possible(tensor.copy(), window).astype(bool) & tensor.copy().astype(bool)
-                              ).astype(int)
-
-    tensor_container.tensor = tensor
+    tensor_container.tensor = onset_container.tensor.astype(bool) & tensor_container.tensor.astype(bool)
 
     return tensor_container
 
+
 @dne_wrapper
-def temporal_entropy(tensor_container,window,offset=0.):
+def temporal_entropy(tensor_container, window, offset=0.):
     """
     temporal_entropy created 04/03/2022 by Jim Dale
 
@@ -283,8 +304,11 @@ def temporal_entropy(tensor_container,window,offset=0.):
     """
 
     missing = tensor_container.missing
+    dne = tensor_container.dne
 
-    tensor_container.tensor = np.where(tensor_container.tensor==missing,0.0,tensor_container.tensor)
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
+
+    tensor_container.tensor = np.where(np.isnan(tensor_container.tensor), 0.0, tensor_container.tensor)
 
     tensor_container.tensor += offset
 
@@ -309,7 +333,7 @@ def temporal_entropy(tensor_container,window,offset=0.):
 
 
 @dne_wrapper
-def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigma):
+def temporal_tree_lag(tensor_container, thetacrit, weight_functions, sigma):
     """
     get_tree_lag
 
@@ -385,11 +409,7 @@ def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigm
             self.weight_fn = None
             self.timesequence = []
             self.npad = 0
-            self.times = []
-            self.time_to_index = {}
-            self.index_to_time = {}
-            self.pgid_to_index = {}
-            self.index_to_pgid = {}
+            self.time_units = None
             self.features = {}
             self.weight_functions = {}
 
@@ -409,10 +429,10 @@ def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigm
 
             """
 
-            self.times, self.time_to_index, self.index_to_time = utilities.map_times(index)
+            self.time_units = mappings.TimeUnits.from_pandas(index)
 
-            tstart = self.times[0]
-            tend = self.times[-1]
+            tstart = self.time_units.times[0]
+            tend = self.time_units.times[-1]
 
             nseq_initial = tend - tstart
             log2_nseq_initial = np.log2(nseq_initial)
@@ -529,8 +549,8 @@ def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigm
                 for feature in range(tensor.shape[-1]):
                     node.features[feature] = np.zeros(tensor.shape[1])
 
-            for time in self.times:
-                itime = self.time_to_index[time]
+            for time in self.time_units.times:
+                itime = self.time_units.time_to_index[time]
                 for node in self.nodes:
                     if node.isleaf and (node.start == time):
                         for ifeature in range(tensor.shape[-1]):
@@ -549,7 +569,7 @@ def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigm
                                 parent.nleaf += 1
                                 parentid = parent.parent
 
-            self.stocked_until = self.times[-1]
+            self.stocked_until = self.time_units.times[-1]
 
         def walk(self, tnow, thetacrit):
 
@@ -688,29 +708,29 @@ def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigm
                 weights[weights < 0.0] = 0.0
             return weights
 
-        def get_weight_functions(self,weight_function_option):
-                self.weight_functions = {}
+        def get_weight_functions(self, weight_function_option):
+            self.weight_functions = {}
 
-                match (weight_function_option[0]):
-                    case ('uniform'):
+            match (weight_function_option[0]):
+                case ('uniform'):
 
-                         self.weight_functions['uniform'] = self._uniform
+                    self.weight_functions['uniform'] = self._uniform
 
-                    case('oneovert'):
+                case('oneovert'):
 
-                         self.weight_functions['oneovert'] = self._oneovert
+                    self.weight_functions['oneovert'] = self._oneovert
 
-                    case ('sigmoid'):
+                case ('sigmoid'):
 
-                         self.weight_functions['sigmoid'] = self._sigmoid
+                    self.weight_functions['sigmoid'] = self._sigmoid
 
-                    case ('expon'):
+                case ('expon'):
 
-                        self.weight_functions['expon'] = self._expon
+                    self.weight_functions['expon'] = self._expon
 
-                    case ('ramp'):
+                case ('ramp'):
 
-                        self.weight_functions['ramp'] = self._ramp
+                    self.weight_functions['ramp'] = self._ramp
 
         def tree_lag(self, tensor, thetacrit, sigma):
 
@@ -726,8 +746,8 @@ def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigm
 
             """
 
-            for time in self.times:
-                itime = self.time_to_index[time]
+            for time in self.time_units.times:
+                itime = self.time_units.time_to_index[time]
                 list_of_nodes = self.walk(time, thetacrit)
                 for ifunction, weight_function in enumerate(self.weight_functions.keys()):
                     weights = self.weight_functions[weight_function](list_of_nodes, time, sigma)
@@ -745,7 +765,7 @@ def temporal_tree_lag(tensor_container, index, thetacrit, weight_functions, sigm
 
     tree = TemporalTree()
 
-    tree.build_tree(index)
+    tree.build_tree(tensor_container.index)
 
     tree.stock_initial(tensor_container.tensor)
 

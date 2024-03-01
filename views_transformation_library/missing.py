@@ -6,13 +6,11 @@ more advanced extrapolations.
 """
 
 import numpy as np
-from numpy.lib.stride_tricks import sliding_window_view
-import warnings
-from views_transformation_library import utilities
-from utilities import dne_wrapper
+from .utilities import dne_wrapper
+
 
 @dne_wrapper
-def replace_na(tensor_container, replacement = 0.):
+def replace_na(tensor_container, replacement=0.):
     """
     replace_na
 
@@ -23,10 +21,7 @@ def replace_na(tensor_container, replacement = 0.):
 
     """
 
-    missing = tensor_container.missing
-
-    tensor_container.tensor = np.where(tensor_container.tensor==missing,
-                                       replacement,tensor_container.tensor)
+    tensor_container.tensor = np.where(np.isnan(tensor_container.tensor), replacement, tensor_container.tensor)
 
     return tensor_container
 
@@ -46,27 +41,28 @@ def fill(tensor_container, limit_direction='both', limit_area=None):
         If 'outside', NaNs are only filled outside valid values. If None, no restrictions are applied.
 
     """
-    def mask_outside_forward(tensor, missing):
-#        mask = np.isnan(tensor)
-        mask = np.where(tensor == missing, True, False)
+    def mask_outside_forward(tensor, missing, dne):
+
+        missing_filled = np.where(tensor == dne, missing, tensor)
+
+        mask = np.isnan(missing_filled)
 
         shape1 = tensor.shape[1]
 
         mask_min = shape1 - 1 - np.flip(mask, axis=1).argmin(axis=1)
 
         mask_indices = np.tile(mask_min, (shape1, 1)).T - np.indices(mask.shape)[1]
-#        nan_mask = np.where(mask_indices < 0, np.nan, 0)
+
         nan_mask = np.where(mask_indices < 0, missing, 0)
-#        mask = np.isnan(nan_mask)
-        mask = np.where(nan_mask == missing, True, False)
+        mask = np.isnan(nan_mask)
 
         return mask
 
-    def outside_forward(tensor, missing):
+    def outside_forward(tensor, missing, dne):
         tensor = tensor.T
         shape1 = tensor.shape[1]
 
-        mask = mask_outside_forward(tensor, missing)
+        mask = mask_outside_forward(tensor, missing, dne)
 
         idx = np.where(~mask, np.arange(shape1), 0)
         np.maximum.accumulate(idx, axis=1, out=idx)
@@ -74,33 +70,32 @@ def fill(tensor_container, limit_direction='both', limit_area=None):
 
         return tensor.T
 
-    def outside_backward(tensor, missing):
+    def outside_backward(tensor, missing, dne):
         tensor = tensor.T
-        tensor = np.flip(tensor,axis=1)
+        tensor = np.flip(tensor, axis=1)
         shape1 = tensor.shape[1]
 
-        mask = mask_outside_forward(tensor, missing)
+        mask = mask_outside_forward(tensor, missing, dne)
 
         idx = np.where(~mask, np.arange(shape1), 0)
         np.maximum.accumulate(idx, axis=1, out=idx)
         tensor = tensor[np.arange(idx.shape[0])[:, None], idx]
 
-        tensor = np.flip(tensor,axis=1)
+        tensor = np.flip(tensor, axis=1)
 
         return tensor.T
 
-    def outside_both(tensor, missing):
-        return outside_backward(outside_forward(tensor, missing), missing)
+    def outside_both(tensor, missing, dne):
+        return outside_backward(outside_forward(tensor, missing, dne), missing, dne)
 
-    def inside_forward(tensor, missing):
+    def inside_forward(tensor, missing, dne):
         tensor = tensor.T
         shape1 = tensor.shape[1]
 
-#        mask = np.isnan(tensor)
-        mask = np.where(tensor == missing, True, False)
+        mask = np.isnan(tensor)
 
-        outside_forward_mask = mask_outside_forward(tensor, missing)
-        outside_backward_mask = np.flip(mask_outside_forward(np.flip(tensor), missing))
+        outside_forward_mask = mask_outside_forward(tensor, missing, dne)
+        outside_backward_mask = np.flip(mask_outside_forward(np.flip(tensor), missing, dne))
 
         outside_mask = np.logical_or(outside_forward_mask, outside_backward_mask)
 
@@ -112,13 +107,13 @@ def fill(tensor_container, limit_direction='both', limit_area=None):
 
         return tensor.T
 
-    def inside_backward(tensor, missing):
+    def inside_backward(tensor, missing, dne):
         tensor = tensor.T
-        tensor = np.flip(tensor,axis=1)
+        tensor = np.flip(tensor, axis=1)
         shape1 = tensor.shape[1]
 
-        outside_forward_mask = mask_outside_forward(tensor, missing)
-        outside_backward_mask = np.flip(mask_outside_forward(np.flip(tensor), missing))
+        outside_forward_mask = mask_outside_forward(tensor, missing, dne)
+        outside_backward_mask = np.flip(mask_outside_forward(np.flip(tensor), missing, dne))
 
         mask = np.logical_or(outside_forward_mask, outside_backward_mask)
 
@@ -126,19 +121,18 @@ def fill(tensor_container, limit_direction='both', limit_area=None):
         np.maximum.accumulate(idx, axis=1, out=idx)
         tensor = tensor[np.arange(idx.shape[0])[:, None], idx]
 
-        tensor = np.flip(tensor,axis=1)
+        tensor = np.flip(tensor, axis=1)
 
         return tensor.T
 
-    def both_both(tensor, missing):
-        return inside_forward(outside_both(tensor, missing), missing)
+    def both_both(tensor, missing, dne):
+        return inside_forward(outside_both(tensor, missing, dne), missing, dne)
 
-    def both_forward(tensor, missing):
-        return inside_forward(outside_forward(tensor, missing), missing)
+    def both_forward(tensor, missing, dne):
+        return inside_forward(outside_forward(tensor, missing, dne), missing, dne)
 
-    def both_backward(tensor, missing):
-        return inside_forward(outside_backward(tensor, missing), missing)
-
+    def both_backward(tensor, missing, dne):
+        return inside_forward(outside_backward(tensor, missing, dne), missing, dne)
 
     def select_filler(limit_direction, limit_area):
         match (limit_direction, limit_area):
@@ -165,11 +159,12 @@ def fill(tensor_container, limit_direction='both', limit_area=None):
 
     tensor_fill = tensor_container.tensor.copy()
     missing = tensor_container.missing
+    dne = tensor_container.dne
 
-    filler=select_filler(limit_direction, limit_area)
+    filler = select_filler(limit_direction, limit_area)
 
-    for ifeature in range(tensor_fill.shape[2]):
-        tensor_fill[:,:,ifeature] = filler(tensor_fill[:,:,ifeature], missing)
+    for ifeature in range(tensor_fill.shape[-1]):
+        tensor_fill[:, :, ifeature] = filler(tensor_fill[:, :, ifeature], missing, dne)
 
     tensor_container.tensor = tensor_fill
 

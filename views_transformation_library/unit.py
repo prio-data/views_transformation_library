@@ -5,7 +5,8 @@
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 import warnings
-from utilities import dne_wrapper
+from .utilities import dne_wrapper
+
 
 @dne_wrapper
 def mean(tensor_container):
@@ -22,17 +23,18 @@ def mean(tensor_container):
     dne = tensor_container.dne
     missing = tensor_container.missing
 
-    tensor_container.tensor[tensor_container.tensor==dne] = missing
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
 
     with warnings.catch_warnings(action="ignore"):
 
         for ifeature in range(tensor_container.tensor.shape[2]):
-            time_mean = np.nanmean(tensor_container.tensor[:,:,ifeature],axis=0)
+            time_mean = np.nanmean(tensor_container.tensor[:, :, ifeature].astype(np.float64), axis=0)
 
             for ispace in range(tensor_container.tensor.shape[1]):
-                tensor_container.tensor[:,ispace,ifeature] = time_mean[ispace]
+                tensor_container.tensor[:, ispace, ifeature] = time_mean[ispace]
 
     return tensor_container
+
 
 @dne_wrapper
 def demean(tensor_container):
@@ -51,17 +53,19 @@ def demean(tensor_container):
     dne = tensor_container.dne
     missing = tensor_container.missing
 
-    tensor_container.tensor[tensor_container.tensor==dne] = missing
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
 
     with warnings.catch_warnings(action="ignore"):
 
         for ifeature in range(tensor_container.tensor.shape[2]):
-            time_mean = np.nanmean(tensor_container.tensor[:, :, ifeature], axis=0)
+            time_mean = np.nanmean(tensor_container.tensor[:, :, ifeature].astype(np.float64), axis=0)
 
-            for ispace in range(tenaro_container.tensor.shape[1]):
-                tensor_container.tensor[:, ispace, ifeature] -= time_mean[ispace]
+            for ispace in range(tensor_container.tensor.shape[1]):
+                tensor_container.tensor[:, ispace, ifeature] = (tensor_container.tensor[:, ispace, ifeature]
+                                                                .astype(np.float64) - time_mean[ispace])
 
     return tensor_container
+
 
 @dne_wrapper
 def rollmax(tensor_container, window: int):
@@ -78,7 +82,7 @@ def rollmax(tensor_container, window: int):
     dne = tensor_container.dne
     missing = tensor_container.missing
 
-    tensor_container.tensor[tensor_container.tensor==dne] = missing
+    tensor_container.tensor[tensor_container.tensor == dne] = missing
 
     if window < 1:
         raise RuntimeError(f"Time below 1 passed to moving sum: {window} \n")
