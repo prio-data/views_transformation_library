@@ -86,7 +86,7 @@ def moving_average(tensor_container, time: int):
     with warnings.catch_warnings(action="ignore"):
 
         tensor_container.tensor[time-1:, :, :] = np.nanmean(sliding_window_view(
-                                               tensor_container.tensor, time, 0),axis=3)
+                                               tensor_container.tensor, time, 0), axis=3)
 
         stub = np.zeros_like(tensor_container.tensor[:time-1, :, :])
 
@@ -121,7 +121,7 @@ def moving_sum(tensor_container, time: int):
     with warnings.catch_warnings(action="ignore"):
 
         tensor_container.tensor[time - 1:, :, :] = np.nansum(sliding_window_view(
-                                                   tensor_container.tensor, time, 0),axis=3)
+                                                   tensor_container.tensor, time, 0), axis=3)
 
         stub = np.zeros_like(tensor_container.tensor[:time - 1, :, :])
 
@@ -143,7 +143,30 @@ def cweq(tensor_container, value: float, seed=None):
 
     for ifeature in range(tensor_container.tensor.shape[-1]):
 
-        mask = np.where(tensor_container.tensor[:, :, ifeature] == value, 1, missing)
+        # replace the zeros with nans - the only non-nan values are now the conflict events
+
+        mask = np.where(tensor_container.tensor[:, :, ifeature] == 0, missing, tensor_container.tensor[:, :, ifeature])
+
+        # now replace nans with the smallest possible numerical value
+
+        mask_inf = np.where(np.isnan(mask), -np.inf, mask)
+
+        # argmax is now searching through an array continaing only 1's and -np.infs - it will record the index of the
+        # first 1 it finds
+
+        argmaxes = np.where(np.argmax(mask_inf, axis=0) == np.argmin(mask_inf, axis=0),
+                            mask_inf.shape[0], np.argmax(mask_inf, axis=0))
+
+        # overwrite leading nans with 1's
+
+        for ispace in range(mask.shape[1]):
+            mask[:argmaxes[ispace], ispace] = 1
+
+        # flip the mask around
+
+        mask = np.where(np.isnan(mask), 1, np.nan)
+
+        # count nans (non-conflict events) cumulatively
 
         boolean_nan_mask = np.isnan(mask)
 
@@ -157,7 +180,11 @@ def cweq(tensor_container, value: float, seed=None):
 
             virow[nirow] = -mask_diffs
 
-            tensor_container.tensor[:, ispace, ifeature] = np.cumsum(virow)
+            cumvirow = np.cumsum(virow)
+
+            cumvirow_shift = np.roll(cumvirow, -1)
+
+            tensor_container.tensor[:, ispace, ifeature] = np.where(cumvirow_shift < 1, np.inf, cumvirow_shift)
 
             if seed is not None:
                 seed1 = seed-1

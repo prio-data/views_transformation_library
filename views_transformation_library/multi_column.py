@@ -1,5 +1,5 @@
 import numpy as np
-from utilities import dne_wrapper
+from .utilities import dne_wrapper
 
 
 @dne_wrapper

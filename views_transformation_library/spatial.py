@@ -891,7 +891,6 @@ def splag_country(tensor_container, kernel_inner: int = 1, kernel_width: int = 1
 
                     vals[vals == np.inf] = 0.0
                     vals[vals == -np.inf] = 0.0
-                    vals[vals == np.nan] = 0.0
 
                     splag[data_month_index, data_country_index, ifeature] = np.nansum(vals * weights)
 
